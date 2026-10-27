@@ -474,13 +474,67 @@ html {
 }
 
 /* New landing (/landing-new): a faint blueprint grid that fades out at the edges */
+.ln-root {
+  --ln-grid-line: rgba(15, 23, 42, 0.06);
+  --ln-beam: 3, 105, 161;      /* cta */
+  --ln-beam-head: #20cbd5;     /* accent */
+}
+.ln-root.dark {
+  --ln-grid-line: rgba(148, 210, 240, 0.06);
+  --ln-beam: 32, 203, 213;     /* accent */
+  --ln-beam-head: #ffffff;
+}
 .ln-grid-bg {
   background-image:
-    linear-gradient(rgba(148, 210, 240, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 210, 240, 0.05) 1px, transparent 1px);
+    linear-gradient(var(--ln-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ln-grid-line) 1px, transparent 1px);
   background-size: 48px 48px;
-  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 85%);
-  mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 75% at 50% 45%, #000 35%, transparent 88%);
+  mask-image: radial-gradient(ellipse 80% 75% at 50% 45%, #000 35%, transparent 88%);
+}
+
+/* Laser beams running along the grid lines. The span spans the section and moves by
+   transform only; its ::after is the 96px streak at the leading end. */
+.ln-beam { position: absolute; pointer-events: none; will-change: transform; }
+.ln-beam::after { content: ""; position: absolute; border-radius: 2px; }
+.ln-beam-v { top: 0; bottom: 0; width: 1px; animation: ln-beam-down 5.5s linear infinite; }
+.ln-beam-v::after {
+  bottom: 0; left: 0; width: 1px; height: 96px;
+  background: linear-gradient(180deg, transparent, rgba(var(--ln-beam), 0.75) 70%, var(--ln-beam-head));
+  box-shadow: 0 0 10px 1px rgba(var(--ln-beam), 0.55);
+}
+.ln-beam-h { left: 0; right: 0; height: 1px; animation: ln-beam-across 6.5s linear infinite; }
+.ln-beam-h::after {
+  right: 0; top: 0; height: 1px; width: 96px;
+  background: linear-gradient(90deg, transparent, rgba(var(--ln-beam), 0.75) 70%, var(--ln-beam-head));
+  box-shadow: 0 0 10px 1px rgba(var(--ln-beam), 0.55);
+}
+[dir="rtl"] .ln-beam-h { animation-name: ln-beam-across-rtl; }
+[dir="rtl"] .ln-beam-h::after { right: auto; left: 0; transform: scaleX(-1); }
+.dark .ln-beam { mix-blend-mode: plus-lighter; }
+
+/* On grid lines: multiples of the 48px cell. */
+.ln-beam-v1 { left: 240px; }
+.ln-beam-v2 { left: 720px; animation-duration: 7s; animation-delay: 2.2s; }
+.ln-beam-v3 { left: 1200px; animation-duration: 6s; animation-delay: 3.8s; }
+.ln-beam-h1 { top: 144px; animation-delay: 1s; }
+.ln-beam-h2 { top: 432px; animation-duration: 8s; animation-delay: 4.5s; }
+.ln-track { animation-duration: 3.6s; }
+
+@keyframes ln-beam-down {
+  0% { transform: translateY(-100%); opacity: 0; }
+  8%, 82% { opacity: 1; }
+  100% { transform: translateY(96px); opacity: 0; }
+}
+@keyframes ln-beam-across {
+  0% { transform: translateX(-100%); opacity: 0; }
+  8%, 82% { opacity: 1; }
+  100% { transform: translateX(96px); opacity: 0; }
+}
+@keyframes ln-beam-across-rtl {
+  0% { transform: translateX(100%); opacity: 0; }
+  8%, 82% { opacity: 1; }
+  100% { transform: translateX(-96px); opacity: 0; }
 }
 
 /* New landing: a pulse travelling along the channel lines */
@@ -492,5 +546,6 @@ html {
   animation: ln-dash 3.2s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
+  .ln-beam { display: none; }
   .ln-dash { animation: none; stroke-dasharray: none; opacity: 0.35; }
 }

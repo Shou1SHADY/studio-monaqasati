@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { IS_UAT } from '@/lib/app-env';
 import { cn } from '@/lib/utils';
 import { PhoneFrame } from './PhoneFrame';
+import { ln } from './tone';
 
 /** The mobile app's web build (the PWA) — there is no store listing yet. */
 const APP_URL = IS_UAT ? 'https://mdmak-mobile-uat.web.app' : 'https://mdmak-mobile.web.app';
@@ -26,11 +27,10 @@ export function LnApp() {
     : { src: '/images/supplier-mobile-clean.png', alt: t('alt_supplier') };
 
   return (
-    <section id="app" className="relative py-20 md:py-28 scroll-mt-20 overflow-hidden">
-      <div className="absolute inset-0 ln-grid-bg opacity-40 pointer-events-none" aria-hidden="true" />
+    <section id="app" className={cn('relative py-20 md:py-28 scroll-mt-20 overflow-hidden', ln.page)}>
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-12 items-center">
-        <div className="order-2 lg:order-1 relative mx-auto w-full max-w-[280px]">
-          <div className="absolute inset-0 rounded-full bg-accent/15 blur-[90px] pointer-events-none" aria-hidden="true" />
+        <div className="order-2 lg:order-1 relative mx-auto w-full max-w-[270px]">
+          <div className="absolute -inset-10 rounded-full bg-gradient-to-br from-cta/15 to-accent/20 blur-[80px] pointer-events-none" aria-hidden="true" />
           <AnimatePresence mode="wait">
             <motion.div
               key={side}
@@ -46,13 +46,13 @@ export function LnApp() {
         </div>
 
         <div className="order-1 lg:order-2">
-          <span className="inline-flex items-center gap-2 rounded-sm border border-accent/20 bg-accent/10 px-3.5 py-1.5 text-xs md:text-sm font-bold text-accent mb-4">
+          <span className={cn('inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs md:text-sm font-bold mb-4', ln.pill)}>
             <Smartphone size={14} aria-hidden="true" /> {t('label')}
           </span>
-          <h2 className={cn('font-extrabold text-white text-[clamp(26px,4vw,48px)]', isAr ? 'leading-[1.6]' : 'leading-[1.2] tracking-tight')}>{t('title')}</h2>
-          <p className="mt-4 text-slate-400 text-base md:text-lg leading-relaxed">{t('sub')}</p>
+          <h2 className={cn('font-extrabold text-[clamp(26px,4vw,46px)]', ln.heading, isAr ? 'leading-[1.6]' : 'leading-[1.2] tracking-tight')}>{t('title')}</h2>
+          <p className={cn('mt-4 text-base md:text-lg leading-relaxed', ln.body)}>{t('sub')}</p>
 
-          <div role="tablist" aria-label={t('label')} className="mt-8 flex w-fit rounded-xl border border-white/10 bg-white/[0.03] p-1">
+          <div role="tablist" aria-label={t('label')} className={cn('mt-8 flex w-fit rounded-xl p-1', ln.segment)}>
             {(['contractor', 'supplier'] as const).map(s => (
               <button
                 key={s}
@@ -60,10 +60,7 @@ export function LnApp() {
                 role="tab"
                 aria-selected={side === s}
                 onClick={() => setSide(s)}
-                className={cn(
-                  'h-10 px-5 rounded-lg text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  side === s ? 'bg-white text-primary' : 'text-slate-400 hover:text-white',
-                )}
+                className={cn('h-10 px-5 rounded-lg text-sm font-bold transition-colors', ln.focus, side === s ? ln.segmentOn : ln.segmentOff)}
               >
                 {t(s === 'contractor' ? 'tab_contractor' : 'tab_supplier')}
               </button>
@@ -72,14 +69,16 @@ export function LnApp() {
 
           <ul role="tabpanel" className="mt-6 space-y-3">
             {points.map(p => (
-              <li key={p} className="flex items-center gap-3 text-slate-200 font-semibold">
+              <li key={p} className={cn('flex items-center gap-3 font-semibold', ln.strong)}>
                 <CheckCircle2 size={18} className="text-success shrink-0" aria-hidden="true" /> {p}
               </li>
             ))}
           </ul>
 
-          <Button asChild className="mt-8 h-12 px-7 rounded-xl font-black gap-2"><a href={APP_URL} target="_blank" rel="noopener noreferrer">{t('open')} <ExternalLink size={15} aria-hidden="true" /></a></Button>
-          <p className="mt-3 text-xs text-slate-500">{t('install_hint')}</p>
+          <Button asChild className="mt-8 h-12 px-7 rounded-xl font-black gap-2 shadow-lg shadow-cta/20">
+            <a href={APP_URL} target="_blank" rel="noopener noreferrer">{t('open')} <ExternalLink size={15} aria-hidden="true" /></a>
+          </Button>
+          <p className={cn('mt-3 text-xs', ln.faint)}>{t('install_hint')}</p>
         </div>
       </div>
     </section>

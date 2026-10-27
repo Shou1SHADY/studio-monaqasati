@@ -5,11 +5,14 @@ import dynamic from 'next/dynamic';
 import { DemoRequestSection } from '@/components/DemoRequestSection';
 import { OnboardingWizard } from '@/components/OnboardingWizard';
 import { ComparisonSection } from '@/components/landing/ComparisonSection';
+import { LANDING_THEME_BOOT, useLandingTheme } from '@/hooks/useLandingTheme';
+import { cn } from '@/lib/utils';
 import { LnTopBar } from './LnTopBar';
 import { LnNavbar } from './LnNavbar';
 import { LnHero } from './LnHero';
 import { LnPartners } from './LnPartners';
 import { LnWhy } from './LnWhy';
+import { LnTour } from './LnTour';
 import { LnNetwork } from './LnNetwork';
 import { LnChannels } from './LnChannels';
 import { LnHowItWorks } from './LnHowItWorks';
@@ -22,6 +25,7 @@ import { LnContactNote } from './LnContactNote';
 import { LnFooter } from './LnFooter';
 import { LnWhatsAppFab } from './LnWhatsAppFab';
 import { isLandingPreview, type LandingPreview } from './preview';
+import { ln } from './tone';
 
 const LandingChatWidget = dynamic(
   () => import('@/components/rag/LandingChatWidget').then(m => ({ default: m.LandingChatWidget })),
@@ -30,10 +34,12 @@ const LandingChatWidget = dynamic(
 
 /**
  * The new landing (UAT preview at /landing-new): midmak.sa's sectioning — offer bar, hero with
- * floating figures, why, network, channels, steps, assistant, app, plans, contact — in Mdmak's
- * theme, keeping the current landing's photo band, partners, before/after, FAQ and demo form.
+ * floating figures, why, product tour, network, channels, steps, assistant, app, plans, contact —
+ * in Mdmak's palette, light by default with a dark mode, keeping the current landing's photo
+ * band, partners, before/after, FAQ and demo form.
  */
 export function LandingNewPage() {
+  const { theme, toggle } = useLandingTheme();
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [data, setData] = useState<LandingPreview | null>(null);
   const start = () => setOnboardingOpen(true);
@@ -46,13 +52,20 @@ export function LandingNewPage() {
   }, []);
 
   return (
-    <div className="min-h-svh bg-slate-950 font-body text-foreground overflow-x-hidden scroll-smooth selection:bg-cta/30">
+    <div
+      id="ln-root"
+      // The boot script may add `dark` before React hydrates (a returning dark visitor).
+      suppressHydrationWarning
+      className={cn('ln-root min-h-svh font-body overflow-x-hidden scroll-smooth selection:bg-cta/20 transition-colors duration-300', ln.page, theme === 'dark' && 'dark')}
+    >
+      <script dangerouslySetInnerHTML={{ __html: LANDING_THEME_BOOT }} />
       <LnTopBar />
-      <LnNavbar onStart={start} />
+      <LnNavbar onStart={start} theme={theme} onToggleTheme={toggle} />
       <main>
         <LnHero data={data} onStart={start} />
         <LnPartners />
         <LnWhy />
+        <LnTour />
         <ComparisonSection />
         <LnNetwork data={data} onStart={start} />
         <LnChannels />
@@ -63,7 +76,7 @@ export function LandingNewPage() {
         <LnPlans onStart={start} />
         <LnFaq />
         <div id="contact" className="scroll-mt-20">
-          <DemoRequestSection />
+          <DemoRequestSection tone="auto" />
           <LnContactNote />
         </div>
       </main>

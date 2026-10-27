@@ -30082,6 +30082,7 @@
     "nav": {
       "home": "Home",
       "why": "Why Mdmak?",
+      "tour": "Tour",
       "network": "Suppliers",
       "how": "How it works",
       "assistant": "AI assistant",
@@ -30091,7 +30092,9 @@
       "login": "Log in",
       "start": "Get started",
       "menu_open": "Open menu",
-      "menu_close": "Close menu"
+      "menu_close": "Close menu",
+      "theme_light": "Light mode",
+      "theme_dark": "Dark mode"
     },
     "hero": {
       "badge": "Your arm in construction procurement",
@@ -30117,6 +30120,20 @@
       "c2_desc": "No supplier quotes before uploading a commercial registration and tax certificate and being approved by our team.",
       "c3_title": "Every request, tracked to receipt",
       "c3_desc": "From RFQ to purchase order, delivery and goods received — every step recorded and visible to your team."
+    },
+    "tour": {
+      "label": "Product tour",
+      "title": "See Mdmak Tech from the inside",
+      "sub": "Clear screens for every role — from posting a request and comparing offers to suppliers following the RFQs that match them.",
+      "tab_1": "Contractor dashboard",
+      "desc_1": "Your requests, incoming offers, awarded contracts and commitment rate at a glance.",
+      "tab_2": "Offer comparison",
+      "desc_2": "Offers side by side, with the cheapest, fastest and newest flagged for you.",
+      "tab_3": "Supplier dashboard",
+      "desc_3": "RFQs in your trade, your offers and your active orders in one place.",
+      "alt_1": "Mdmak Tech contractor dashboard",
+      "alt_2": "Mdmak Tech supplier offer comparison table",
+      "alt_3": "Mdmak Tech supplier dashboard"
     },
     "network": {
       "label": "Supplier network",

@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Award, BadgeCheck, FileUp, Inbox, Scale, Send, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SectionHeader } from './SectionHeader';
+import { ln } from './tone';
 
 type Side = 'contractor' | 'supplier';
 
@@ -28,11 +29,11 @@ export function LnHowItWorks() {
   };
 
   return (
-    <section id="how" className="relative py-20 md:py-28 scroll-mt-20">
+    <section id="how" className={cn('relative py-20 md:py-28 scroll-mt-20', ln.page)}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <SectionHeader label={t('label')} title={t('title')} sub={t('sub')} />
 
-        <div role="tablist" aria-label={t('label')} className="mx-auto mb-10 flex w-fit rounded-2xl border border-white/10 bg-white/[0.03] p-1.5">
+        <div role="tablist" aria-label={t('label')} className={cn('mx-auto mb-12 flex w-fit rounded-2xl p-1.5', ln.segment)}>
           {(['contractor', 'supplier'] as const).map(s => (
             <button
               key={s}
@@ -40,10 +41,7 @@ export function LnHowItWorks() {
               role="tab"
               aria-selected={side === s}
               onClick={() => setSide(s)}
-              className={cn(
-                'h-11 px-6 rounded-xl text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                side === s ? 'bg-cta text-white shadow-lg shadow-cta/25' : 'text-slate-400 hover:text-white',
-              )}
+              className={cn('h-11 px-6 rounded-xl text-sm font-bold transition-colors', ln.focus, side === s ? ln.segmentOn : ln.segmentOff)}
             >
               {t(s === 'contractor' ? 'tab_contractor' : 'tab_supplier')}
             </button>
@@ -51,7 +49,10 @@ export function LnHowItWorks() {
         </div>
 
         <div className="relative">
-          <div className="hidden md:block absolute top-12 inset-x-[16%] border-t-2 border-dashed border-white/10" aria-hidden="true" />
+          {/* The track the steps sit on, with a light running along it. */}
+          <div className="hidden md:block absolute top-12 inset-x-[16%] h-px bg-slate-200 dark:bg-white/10 overflow-hidden" aria-hidden="true">
+            <span className="ln-beam ln-beam-h ln-track" />
+          </div>
           <AnimatePresence mode="wait">
             <motion.ol
               key={side}
@@ -60,18 +61,18 @@ export function LnHowItWorks() {
               animate={{ opacity: 1, y: 0 }}
               exit={reduce ? undefined : { opacity: 0, y: -8 }}
               transition={{ duration: 0.3 }}
-              className="relative grid md:grid-cols-3 gap-5 md:gap-8"
+              className="relative grid md:grid-cols-3 gap-10 md:gap-8"
             >
               {steps[side].map((s, i) => (
                 <li key={s.title} className="text-center">
-                  <div className="relative mx-auto mb-6 w-24 h-24 rounded-3xl border border-accent/25 bg-slate-950 flex items-center justify-center shadow-xl shadow-accent/5">
-                    <s.icon size={34} className="text-accent" aria-hidden="true" />
-                    <span className="absolute -top-3 -end-3 w-9 h-9 rounded-xl bg-cta text-white text-sm font-black flex items-center justify-center tracking-latin">
+                  <div className="relative mx-auto mb-6 w-24 h-24 rounded-3xl border border-cta/20 bg-white flex items-center justify-center shadow-xl shadow-cta/10 dark:border-accent/25 dark:bg-slate-950 dark:shadow-accent/5">
+                    <s.icon size={34} className="text-cta dark:text-accent" aria-hidden="true" />
+                    <span className="absolute -top-3 -end-3 w-9 h-9 rounded-xl bg-cta text-white text-sm font-black flex items-center justify-center tracking-latin shadow-md shadow-cta/30">
                       {String(i + 1).padStart(2, '0')}
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-3">{s.title}</h3>
-                  <p className="text-slate-400 leading-[1.85] max-w-sm mx-auto">{s.desc}</p>
+                  <h3 className={cn('text-xl font-bold mb-3', ln.heading)}>{s.title}</h3>
+                  <p className={cn('leading-[1.85] max-w-sm mx-auto', ln.body)}>{s.desc}</p>
                 </li>
               ))}
             </motion.ol>
