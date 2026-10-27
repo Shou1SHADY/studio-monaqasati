@@ -56,8 +56,9 @@ function twilioCredentials(): boolean {
 // The relay wins when both are set.
 const TAQNYAT_URL = "https://api.taqnyat.sa/v1/messages"
 
+// FIXIE_URL is the variable Fixie's Vercel integration writes on its own.
 function taqnyatProxy(): string | null {
-  const url = (process.env.TAQNYAT_PROXY_URL || "").trim()
+  const url = (process.env.TAQNYAT_PROXY_URL || process.env.FIXIE_URL || "").trim()
   return /^https?:\/\/[^\s/]+/.test(url) ? url : null
 }
 
