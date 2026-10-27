@@ -13,7 +13,9 @@
 runConfig:
   cpu: 1
   memoryMiB: 1024
-  minInstances: 1
+  # Scale to zero: no server is billed while nobody uses UAT. The first request
+  # after a quiet spell starts one (a few seconds slower). Owner's call, 27 Oct 2026.
+  minInstances: 0
   maxInstances: 2
   concurrency: 20
 
