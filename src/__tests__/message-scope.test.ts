@@ -28,7 +28,7 @@ describe("scopeMessages", () => {
 
 describe("what each public route may read from Portal", () => {
   const L = "src/app/[locale]"
-  const rootScoped = [`${L}/about/page.tsx`, `${L}/contact/page.tsx`, `${L}/pricing/page.tsx`, `${L}/privacy/page.tsx`, `${L}/terms/page.tsx`, `${L}/login/page.tsx`, `${L}/register/page.tsx`, `${L}/verify-email/page.tsx`, `${L}/chat/[chatId]/page.tsx`, `${L}/rfq/[token]/page.tsx`, `${L}/portal/[token]/page.tsx`, `${L}/_not-found.tsx`, `${L}/layout.tsx`]
+  const rootScoped = [`${L}/landing-new/page.tsx`, `${L}/about/page.tsx`, `${L}/contact/page.tsx`, `${L}/pricing/page.tsx`, `${L}/privacy/page.tsx`, `${L}/terms/page.tsx`, `${L}/login/page.tsx`, `${L}/register/page.tsx`, `${L}/verify-email/page.tsx`, `${L}/chat/[chatId]/page.tsx`, `${L}/rfq/[token]/page.tsx`, `${L}/portal/[token]/page.tsx`, `${L}/_not-found.tsx`, `${L}/layout.tsx`]
   const routeScoped: [string, PortalScope][] = [
     [`${L}/page.tsx`, ROUTE_PORTAL_SCOPES.landing],
     [`${L}/supplier-signup/page.tsx`, ROUTE_PORTAL_SCOPES.supplierSignup],
