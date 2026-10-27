@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { ScopedIntl } from '@/components/ScopedIntl';
 import { RagChatWidget } from '@/components/rag/RagChatWidget';
 import { SupplierPlanFrame } from '@/components/supplier-free/SupplierPlanFrame';
 
@@ -11,9 +12,11 @@ export const metadata: Metadata = {
 
 export default function SupplierLayout({ children }: { children: React.ReactNode }) {
   return (
-    <FirebaseClientProvider>
-      <SupplierPlanFrame>{children}</SupplierPlanFrame>
-      <RagChatWidget userRole="Supplier" />
-    </FirebaseClientProvider>
+    <ScopedIntl portal="all">
+      <FirebaseClientProvider>
+        <SupplierPlanFrame>{children}</SupplierPlanFrame>
+        <RagChatWidget userRole="Supplier" />
+      </FirebaseClientProvider>
+    </ScopedIntl>
   );
 }

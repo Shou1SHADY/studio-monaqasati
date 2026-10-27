@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { alternatesForPath } from '@/lib/seo';
 import HomeContent from './content';
+import { ScopedIntl } from '@/components/ScopedIntl';
+import { ROUTE_PORTAL_SCOPES } from '@/i18n/route-scopes';
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -60,5 +62,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default function Page() {
-  return <HomeContent />;
+  return (
+    <ScopedIntl portal={ROUTE_PORTAL_SCOPES.landing}>
+      <HomeContent />
+    </ScopedIntl>
+  );
 }

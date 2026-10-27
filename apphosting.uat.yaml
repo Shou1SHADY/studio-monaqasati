@@ -11,7 +11,11 @@
 # https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
 
 runConfig:
-  maxInstances: 1
+  cpu: 1
+  memoryMiB: 1024
+  minInstances: 1
+  maxInstances: 2
+  concurrency: 20
 
 env:
   - variable: NEXT_PUBLIC_APP_ENV

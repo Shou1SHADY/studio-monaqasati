@@ -7,6 +7,7 @@ import { BodyPointerEventsGuard } from '@/components/BodyPointerEventsGuard';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
+import { ROOT_PORTAL_SCOPE, scopeMessages } from '@/i18n/message-scope';
 import { notFound } from 'next/navigation';
 import StructuredData from '@/components/StructuredData';
 import { EnvironmentRibbon } from '@/components/EnvironmentRibbon';
@@ -136,7 +137,7 @@ export default async function RootLayout({
             })(window,document,'script','dataLayer','GTM-NWKDPSW4');
           `}
         </Script>
-        <NextIntlClientProvider messages={messages}>
+        <NextIntlClientProvider messages={scopeMessages(messages, ROOT_PORTAL_SCOPE)}>
           <RadixDirection locale={locale}>
             <StructuredData />
             <EnvironmentRibbon />
