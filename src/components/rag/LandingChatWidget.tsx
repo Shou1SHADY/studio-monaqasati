@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useLocale } from 'next-intl';
 import { Link } from '@/i18n/routing';
 import { useLandingChat, type LandingMessage } from '@/hooks/useLandingChat';
+import { OPEN_LANDING_ASSISTANT } from '@/lib/landing-assistant';
 
 // ── Quick prompts by locale ───────────────────────────────────────────────────
 
@@ -137,6 +138,13 @@ export function LandingChatWidget() {
   useEffect(() => {
     const t = setTimeout(() => setShowTeaser(true), 4000);
     return () => clearTimeout(t);
+  }, []);
+
+  // A section's "ask the assistant" button opens it.
+  useEffect(() => {
+    const open = () => { setIsOpen(true); setShowTeaser(false); };
+    window.addEventListener(OPEN_LANDING_ASSISTANT, open);
+    return () => window.removeEventListener(OPEN_LANDING_ASSISTANT, open);
   }, []);
 
   // Auto-scroll

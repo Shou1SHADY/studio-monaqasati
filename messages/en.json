@@ -30068,5 +30068,189 @@
     "fIban": "IBAN",
     "fBankName": "Bank name",
     "ibanBad": "A Saudi IBAN is SA followed by 22 digits"
+  },
+  "LandingNew": {
+    "meta": {
+      "title": "Mdmak Tech — new home page design (preview)",
+      "description": "A preview of the new Mdmak Tech home page on the test environment."
+    },
+    "bar": {
+      "text": "Supplier accounts are free — register your company and start receiving RFQs that match your trade.",
+      "cta": "Join as a supplier",
+      "close": "Dismiss banner"
+    },
+    "nav": {
+      "home": "Home",
+      "why": "Why Mdmak?",
+      "tour": "Tour",
+      "network": "Suppliers",
+      "how": "How it works",
+      "assistant": "AI assistant",
+      "app": "App",
+      "plans": "Plans",
+      "contact": "Contact",
+      "login": "Log in",
+      "start": "Get started",
+      "menu_open": "Open menu",
+      "menu_close": "Close menu",
+      "theme_light": "Light mode",
+      "theme_dark": "Dark mode"
+    },
+    "hero": {
+      "badge": "Your arm in construction procurement",
+      "title_1": "Your procurement,",
+      "title_2": "clearer offers, faster decisions.",
+      "sub": "Post an RFQ once, receive offers from verified suppliers in one comparison table, and award the best — from request to receipt in one place.",
+      "cta_contractor": "Start free as a contractor",
+      "cta_supplier": "Join as a supplier",
+      "cta_demo": "Request a demo",
+      "trusted": "Verified suppliers across 20 building-material categories",
+      "chip_offers": "offers on a live RFQ",
+      "chip_categories": "main material categories",
+      "chip_response": "hours to the first offer",
+      "screenshot_alt": "Mdmak Tech app screenshot showing the contractor dashboard: active RFQs and offers received"
+    },
+    "why": {
+      "label": "Why Mdmak Tech?",
+      "title": "Everything a procurement team needs — without WhatsApp groups",
+      "sub": "One platform to request, compare, award and follow up, built for Saudi contractors and suppliers.",
+      "c1_title": "Offers you can compare",
+      "c1_desc": "Every offer in one table: price, lead time, payment terms and supplier rating — compare and decide with confidence.",
+      "c2_title": "Verified suppliers",
+      "c2_desc": "No supplier quotes before uploading a commercial registration and tax certificate and being approved by our team.",
+      "c3_title": "Every request, tracked to receipt",
+      "c3_desc": "From RFQ to purchase order, delivery and goods received — every step recorded and visible to your team."
+    },
+    "tour": {
+      "label": "Product tour",
+      "title": "See Mdmak Tech from the inside",
+      "sub": "Clear screens for every role — from posting a request and comparing offers to suppliers following the RFQs that match them.",
+      "tab_1": "Contractor dashboard",
+      "desc_1": "Your requests, incoming offers, awarded contracts and commitment rate at a glance.",
+      "tab_2": "Offer comparison",
+      "desc_2": "Offers side by side, with the cheapest, fastest and newest flagged for you.",
+      "tab_3": "Supplier dashboard",
+      "desc_3": "RFQs in your trade, your offers and your active orders in one place.",
+      "alt_1": "Mdmak Tech contractor dashboard",
+      "alt_2": "Mdmak Tech supplier offer comparison table",
+      "alt_3": "Mdmak Tech supplier dashboard"
+    },
+    "network": {
+      "label": "Supplier network",
+      "title": "Verified suppliers for everything your project needs",
+      "sub": "From steel and concrete to electrical, HVAC and finishes — your request reaches only the suppliers that match its category.",
+      "count_label": "verified suppliers on the platform",
+      "categories_line": "20 main and 100+ sub-categories of building materials",
+      "verified": "Verified",
+      "hidden": "Name shown after sign-up",
+      "cta_supplier": "Register as a supplier",
+      "cta_contractor": "Post your first RFQ",
+      "cats": {
+        "0": "Steel",
+        "1": "Ready-mix concrete",
+        "2": "Cement & adhesives",
+        "3": "Electrical",
+        "4": "HVAC & refrigeration",
+        "5": "Plumbing",
+        "6": "Paints",
+        "7": "Insulation",
+        "8": "Doors & windows",
+        "9": "Walls & flooring",
+        "10": "Safety products",
+        "11": "Glass & facades"
+      }
+    },
+    "channels": {
+      "label": "Channels",
+      "title": "Every road leads to Mdmak Tech",
+      "sub": "Post from the channel that suits you; suppliers answer from the one that suits them — all of it lands on the same platform.",
+      "users_label": "Contractors",
+      "platform_label": "Mdmak Tech platform",
+      "platform_sub": "One request · one comparison · one decision",
+      "vendor_label": "Suppliers",
+      "in_1": "Web portal",
+      "in_2": "Mobile app",
+      "in_3": "Excel BOQ upload",
+      "in_4": "AI assistant",
+      "in_5": "RFQ link over WhatsApp",
+      "out_1": "Supplier portal",
+      "out_2": "Quote link, no account needed",
+      "out_3": "Mobile app",
+      "out_4": "Instant notifications",
+      "diagram_label": "Diagram of requests flowing from contractor channels into the Mdmak Tech platform and out to suppliers"
+    },
+    "how": {
+      "label": "How it works",
+      "title": "Three steps and you're live",
+      "sub": "Buying or selling, the path is short and clear.",
+      "tab_contractor": "For contractors",
+      "tab_supplier": "For suppliers",
+      "c1_title": "Post your request",
+      "c1_desc": "Type the items or upload your Excel BOQ, set the delivery site and closing date in minutes.",
+      "c2_title": "Receive offers",
+      "c2_desc": "Your request reaches the verified suppliers in its category, and their detailed offers come back with price, lead time and terms.",
+      "c3_title": "Compare and award",
+      "c3_desc": "Compare offers side by side, award the best, and the purchase order is issued and tracked to receipt.",
+      "s1_title": "Register and verify",
+      "s1_desc": "With your mobile number only, then upload your commercial registration and tax certificate for approval.",
+      "s2_title": "Receive matching RFQs",
+      "s2_desc": "RFQs in your trade reach you the moment they are posted — no searching, no middlemen.",
+      "s3_title": "Quote and get the order",
+      "s3_desc": "Send your offer from phone or web; on award you receive the purchase order and follow delivery and invoicing."
+    },
+    "assistant": {
+      "label": "AI-powered",
+      "title": "Meet the Mdmak assistant",
+      "sub": "Ask about the platform in Arabic or English — how to post a request, how to compare offers, how to join as a supplier — and get an answer right away.",
+      "f1": "Understands Arabic and local dialect",
+      "f2": "Answers from the platform's own guide",
+      "f3": "Hands you to our team when needed",
+      "f4": "Available 24/7",
+      "cta": "Ask the assistant",
+      "name": "Mdmak assistant",
+      "online": "Online",
+      "demo_q": "How do I compare the suppliers' offers on my request?",
+      "demo_a": "Once the request closes, every offer appears in one comparison table: price per item, lead time, payment terms and supplier rating. Pick the best and press “Award” to issue the purchase order.",
+      "typing": "typing…"
+    },
+    "app": {
+      "label": "Our app",
+      "title": "Mdmak Tech goes to site with you",
+      "sub": "Follow requests, offers and approvals from your phone — for the contractor on site and the supplier in the warehouse.",
+      "tab_contractor": "Contractor",
+      "tab_supplier": "Supplier",
+      "c_1": "Post a request straight from site",
+      "c_2": "An instant alert for every offer",
+      "c_3": "Compare and award from your phone",
+      "s_1": "Browse RFQs that match your trade",
+      "s_2": "Quote in a minute",
+      "s_3": "Follow purchase orders and deliveries",
+      "open": "Open the web app",
+      "install_hint": "Works on iOS and Android — add it to your home screen from the browser",
+      "alt_contractor": "Mdmak Tech app screenshot for contractors",
+      "alt_supplier": "Mdmak Tech app screenshot for suppliers"
+    },
+    "plans": {
+      "label": "Plans",
+      "title": "Plans that grow with your business",
+      "sub": "No hidden fees. Start free and upgrade when you need to.",
+      "banner_title": "Suppliers start free",
+      "banner_desc": "The free supplier account receives RFQs, sends offers and follows purchase orders — no bank card needed.",
+      "banner_cta": "Join free as a supplier"
+    },
+    "faq": {
+      "label": "FAQ"
+    },
+    "contact": {
+      "note": "We built Mdmak Tech to connect contractors and suppliers with trust and clarity, and we read every message ourselves. Whether you have a request or you're a supplier with a question — we're here, and we answer fast.",
+      "sign": "— The Mdmak Tech team",
+      "or": "Or reach us directly"
+    },
+    "footer": {
+      "tagline": "Building the future of construction procurement, course by course."
+    },
+    "wa": {
+      "label": "Chat with us on WhatsApp"
+    }
   }
 }
