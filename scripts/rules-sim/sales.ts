@@ -505,7 +505,7 @@ run({ title: "crmQuotations delete issued", method: "delete", path: Q, before: q
 run({ title: "crmQuotations delete sent (deleteOpportunityCascade / deleteContactCascade by crm.manage member)", method: "delete", path: Q, before: qSent, allow: ["owner", "closer", "mgr", "crm"], deny: ["rep", ...OUTSIDE] })
 run({ title: "crmQuotations delete accepted (cascade by crm.manage member)", method: "delete", path: Q, before: qAccepted, allow: ["owner", "closer", "crm"], deny: ["rep"] })
 run({ title: "crmQuotations get", method: "get", path: Q, before: qDraft, allow: ["owner", "rep", "viewer", "fin", "realMember"], deny: OUTSIDE })
-run({ title: "crmQuotations list", method: "list", path: Q, before: qDraft, allow: ["owner", "rep"], deny: ["anon"], gap: ["stranger"] })
+run({ title: "crmQuotations list", method: "list", path: Q, before: qDraft, allow: ["owner", "rep"], deny: ["anon", "stranger"] })
 
 // ---------------------------------------------------------------------------
 // crmOpportunities
@@ -542,7 +542,7 @@ run({ title: "crmOpportunities rename contactName on handed_over deal", method: 
 run({ title: "crmOpportunities move deal into another company", method: "update", path: OPP, before: opp(), after: patch(opp(), { organizationId: OTHER_ORG }), gap: ["crm", "owner"] })
 run({ title: "crmOpportunities delete", method: "delete", path: OPP, before: opp(), allow: ["owner", "crm"], deny: OUTSIDE, gap: ["viewer"] })
 run({ title: "crmOpportunities get", method: "get", path: OPP, before: opp(), allow: ["owner", "crm", "viewer"], deny: OUTSIDE })
-run({ title: "crmOpportunities list", method: "list", path: OPP, before: opp(), allow: ["owner"], deny: ["anon"], gap: ["stranger"] })
+run({ title: "crmOpportunities list", method: "list", path: OPP, before: opp(), allow: ["owner"], deny: ["anon", "stranger"] })
 const OPPF = "crmOpportunities/p1/files/f1"
 const oppFile = (by: string, extra: Data = {}): Data => ({ organizationId: ORG, byId: by, name: "site.jpg", url: "https://x", createdAt: T1, ...extra })
 run({ title: "crmOpportunities file add in own name (OPP-10)", method: "create", path: OPPF, after: oppFile(U.crm), allow: ["crm"], deny: OUTSIDE })
@@ -565,7 +565,7 @@ run({ title: "crmContacts update (rename)", method: "update", path: CT, before: 
 run({ title: "crmContacts update moving it to another company", method: "update", path: CT, before: contact(), after: patch(contact(), { organizationId: OTHER_ORG }), gap: ["crm", "owner"] })
 run({ title: "crmContacts delete (deleteContactCascade last step)", method: "delete", path: CT, before: contact(), allow: ["owner", "crm"], deny: OUTSIDE, gap: ["viewer"] })
 run({ title: "crmContacts get", method: "get", path: CT, before: contact(), allow: ["owner", "crm", "viewer"], deny: OUTSIDE })
-run({ title: "crmContacts list", method: "list", path: CT, before: contact(), allow: ["owner"], deny: ["anon"], gap: ["stranger"] })
+run({ title: "crmContacts list", method: "list", path: CT, before: contact(), allow: ["owner"], deny: ["anon", "stranger"] })
 
 const actNew = activity({ createdAt: T1, updatedAt: T1 })
 run({ title: "crmActivities create (CrmActivityDialog)", method: "create", path: "crmActivities/an", after: actNew, allow: ["owner", "crm"], deny: OUTSIDE, gap: ["viewer"] })
@@ -578,7 +578,7 @@ run({ title: "crmActivities clear deal link (deleteOpportunityCascade)", method:
 run({ title: "crmActivities move to another company", method: "update", path: ACT, before: activity(), after: patch(activity(), { organizationId: OTHER_ORG }), gap: ["crm"] })
 run({ title: "crmActivities delete", method: "delete", path: ACT, before: activity(), allow: ["owner", "crm"], deny: OUTSIDE, gap: ["viewer"] })
 run({ title: "crmActivities get", method: "get", path: ACT, before: activity(), allow: ["owner", "viewer"], deny: OUTSIDE })
-run({ title: "crmActivities list", method: "list", path: ACT, before: activity(), allow: ["owner"], deny: ["anon"], gap: ["stranger"] })
+run({ title: "crmActivities list", method: "list", path: ACT, before: activity(), allow: ["owner"], deny: ["anon", "stranger"] })
 
 const profile = { organizationId: ORG, classifications: {}, annualCeiling: 1000000, underExecution: 1000, updatedAt: T1 }
 run({ title: "crmOrgProfile first save (CrmSettingsView setDoc merge, create)", method: "create", path: `crmOrgProfile/${ORG}`, after: profile, allow: ["owner", "crm", "rep"], deny: OUTSIDE, gap: ["viewer"] })
@@ -587,7 +587,7 @@ run({ title: "crmOrgProfile logo default (QuotationLogoField)", method: "update"
 run({ title: "crmOrgProfile with mismatching organizationId field", method: "update", path: `crmOrgProfile/${ORG}`, before: { ...profile, updatedAt: T0 }, after: { ...profile, organizationId: OTHER_ORG }, deny: ["owner", "crm"] })
 run({ title: "crmOrgProfile another company's profile", method: "update", path: `crmOrgProfile/${OTHER_ORG}`, before: { ...profile, organizationId: OTHER_ORG, updatedAt: T0 }, after: { ...profile, organizationId: OTHER_ORG }, deny: ["owner", "crm"] })
 run({ title: "crmOrgProfile get", method: "get", path: `crmOrgProfile/${ORG}`, allow: ["owner", "viewer"], deny: OUTSIDE })
-run({ title: "crmOrgProfile list", method: "list", path: `crmOrgProfile/${ORG}`, allow: ["owner"], deny: ["anon"], gap: ["stranger"] })
+run({ title: "crmOrgProfile list", method: "list", path: `crmOrgProfile/${ORG}`, before: { organizationId: ORG, stageProbabilities: {} }, allow: ["owner"], deny: ["anon", "stranger"] })
 
 // ---------------------------------------------------------------------------
 // salesPriceItems
@@ -746,6 +746,7 @@ run({ title: "mfgCounters get own company", method: "get", path: ctr, before: { 
 const inventoryRow = { name: "Slab", quantity: 100, organizationId: ORG, updatedAt: T0 }
 run({ title: "inventoryItems decrement on client signature (confirmDelivery tx)", method: "update", path: "warehouses/w1/inventoryItems/it1", before: inventoryRow, after: { ...inventoryRow, quantity: 96, updatedAt: T1 }, allow: ["rep", "owner", "mgr"], deny: ["stranger", "anon"] })
 run({ title: "inventoryItems restock on credit note (issueCreditNote)", method: "update", path: "warehouses/w1/inventoryItems/it1", before: inventoryRow, after: { ...inventoryRow, quantity: 101, updatedAt: T1 }, allow: ["fininv", "fin"], deny: ["stranger"] })
+run({ title: "warehouses list own company (every client query filters by organizationId)", method: "list", path: "warehouses/w1", before: { organizationId: ORG, name: "Main" }, allow: ["owner", "rep"], deny: ["stranger", "anon"] })
 
 const mfgReq = (extra: Data = {}): Data => ({ organizationId: ORG, requestNumber: "MR-2026/001", kind: "make", sourceKind: "sales", orderId: "o1", orderNumber: 1, contactName: "Client", itemName: "Slab", unit: "m2", quantity: 5, lines: [], estimateId: null, neededBy: null, note: null, status: "new", workOrderId: null, workOrderNumber: null, rejectionReason: null, decidedAt: null, decidedByUserId: null, decidedByUserName: null, createdByUserId: U.rep, createdByUserName: "Rep", createdAt: T1, updatedAt: T1, requestedAt: T1, ...extra })
 run({ title: "manufacturingRequests create from Sales order (createManufacturingRequest)", method: "create", path: "manufacturingRequests/mr1", after: mfgReq(), allow: ["rep"], deny: ["fininv", "viewer", ...OUTSIDE] })

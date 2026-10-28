@@ -3402,7 +3402,7 @@ service cloud.firestore {
     // CRM contacts — scoped to an organization
     match /crmContacts/{contactId} {
       allow get: if orgReadable();
-      allow list: if isSignedIn();
+      allow list: if orgReadable();
       allow create: if isSignedIn() && (isAdmin() || createsInOrg());
       allow update: if isAdmin() || keepsOrg();
       allow delete: if orgReadable();
@@ -3450,7 +3450,7 @@ service cloud.firestore {
 
     match /crmOpportunities/{opportunityId} {
       allow get: if orgReadable();
-      allow list: if isSignedIn();
+      allow list: if orgReadable();
       allow create: if isSignedIn() && (isAdmin() || createsInOrg())
         && !(('state' in request.resource.data) && rd().state in ['won', 'lost', 'handed_over'])
         && !(('stage' in request.resource.data) && rd().stage in ['won', 'lost']);
@@ -3520,7 +3520,7 @@ service cloud.firestore {
 
     match /crmQuotations/{quotationId} {
       allow get: if orgReadable();
-      allow list: if isSignedIn();
+      allow list: if orgReadable();
       allow create: if isSignedIn() && (isAdmin() || (createsInOrg()
         && (rd().get('status', 'draft') != 'accepted' || canApproveQuotation())));
       allow update: if isSignedIn() && (isAdmin() || (keepsOrg()
@@ -3825,7 +3825,7 @@ service cloud.firestore {
     // profile and a concurrent first save cannot create a duplicate.
     match /crmOrgProfile/{organizationId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(organizationId));
-      allow list: if isSignedIn();
+      allow list: if orgReadable();
       allow create, update: if isSignedIn()
         && (isAdmin() || isOrgMember(organizationId))
         && request.resource.data.organizationId == organizationId;
@@ -4109,7 +4109,7 @@ service cloud.firestore {
     // it was logged against and, optionally, the opportunity.
     match /crmActivities/{activityId} {
       allow get: if orgReadable();
-      allow list: if isSignedIn();
+      allow list: if orgReadable();
       allow create: if isSignedIn() && (isAdmin() || createsInOrg());
       allow update: if isAdmin() || keepsOrg();
       allow delete: if orgReadable();
@@ -4217,7 +4217,7 @@ service cloud.firestore {
     // Warehouses — scoped to an organization, with inventory items subcollection
     match /warehouses/{warehouseId} {
       allow get: if orgReadable();
-      allow list: if isSignedIn();
+      allow list: if orgReadable();
       allow create: if isSignedIn() && (isAdmin() || createsInOrg());
       allow update, delete: if orgReadable();
 

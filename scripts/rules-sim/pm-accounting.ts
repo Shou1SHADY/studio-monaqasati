@@ -83,6 +83,7 @@ interface Outcome {
   stray: string[]
   detail: string
   limit: boolean
+  visited?: number
 }
 
 interface State {
@@ -1275,8 +1276,8 @@ const projPath = `projects/${P}`
   add("incident log non-LTI with lost days", U.hse, "create", ip, "DENY", { after: inc(U.hse, { lostDays: 3 }) })
   add("incident log: QS", U.cost, "create", ip, "DENY", { after: inc(U.cost) })
   add("incident edit", U.site, "update", ip, "DENY", { before: inc(U.site), after: inc(U.site, { what: "x" }) })
-  const pp = `projects/${P}/pmPermits/0001`
-  add("work permit: hse officer", U.hse, "create", pp, "ALLOW", { after: { seq: 1, title: "t", who: "w", from: TODAY, to: TODAY, ...base(U.hse) } })
+  const wpp = `projects/${P}/pmPermits/0001`
+  add("work permit: hse officer", U.hse, "create", wpp, "ALLOW", { after: { seq: 1, title: "t", who: "w", from: TODAY, to: TODAY, ...base(U.hse) } })
 
   const lp = `projects/${P}/pmLetters/0001`
   const letter = (uid: string, over: D = {}): D => ({ seq: 1, no: "PJ-1/OUT-1", dir: "out", party: "cons", subject: "s", day: TODAY, due: 7, status: "out", links: [], file: null, reply: null, ...base(uid), ...over })
