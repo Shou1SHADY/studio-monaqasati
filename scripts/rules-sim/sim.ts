@@ -19,6 +19,8 @@ export interface RuleCase {
   before?: Data
   /** The document after the write (create, update). */
   after?: Data
+  /** The request time (RFC 3339) for rules that read `request.time`; left out, the test API supplies none. */
+  time?: string
   /** Documents the rules may read, replacing what UAT holds (null = does not exist). */
   overrides?: Record<string, Data | null>
   expect: "ALLOW" | "DENY"
@@ -84,7 +86,7 @@ export async function simulate(c: RuleCase): Promise<RuleResult> {
   const known = new Map<string, Data | null>()
   const testCase = {
     expectation: "ALLOW",
-    request: { auth: c.uid ? { uid: c.uid, token: {} } : null, path: ROOT + c.path, method: c.method, ...(c.after ? { resource: { data: c.after } } : {}) },
+    request: { auth: c.uid ? { uid: c.uid, token: {} } : null, path: ROOT + c.path, method: c.method, ...(c.time ? { time: c.time } : {}), ...(c.after ? { resource: { data: c.after } } : {}) },
     ...(c.before ? { resource: { data: c.before } } : {}),
   }
   for (let round = 0; round < 12; round++) {

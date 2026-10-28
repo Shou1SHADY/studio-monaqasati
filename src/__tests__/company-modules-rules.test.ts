@@ -23,7 +23,12 @@ describe("companyModules rules", () => {
   it("is read by the company's own members and by the admin", () => {
     const get = rule(body, "get")
     expect(get).toContain("isAdmin()")
-    expect(get).toContain("isOrgMember(orgId)")
+    expect(get).toContain("getRawOrganizationId() == orgId")
+    expect(get).not.toContain("isOrgMember(orgId)")
+  })
+
+  it("is read by the raw organisation id, so a company whose trial ended can still read why it is locked", () => {
+    expect(rule(body, "get")).toContain("getRawOrganizationId()")
   })
 
   it("is listed by the admin only", () => {
@@ -62,5 +67,23 @@ describe("the purchase-order budget gate in firestore.rules", () => {
     const body = rules.slice(rules.indexOf("function poApproves("), rules.indexOf("function poReturns("))
     expect(body).toContain("poPmBudgetClear()")
     expect(rules).not.toContain("poSelfIssues")
+  })
+})
+
+describe("the trial lock in the helpers every rule asks", () => {
+  it("getOrganizationId answers nothing for a company whose trial is over, and the raw id is the only way round it", () => {
+    const fn = rules.slice(rules.indexOf("function getOrganizationId()"), rules.indexOf("function hasRole("))
+    expect(fn).toContain("trialOver(")
+    expect(fn).toContain("companyModules/$(org)")
+    expect(fn).toContain(": org;")
+    const users = rules.match(/getRawOrganizationId\(\)/g) ?? []
+    expect(users.length).toBe(3)
+  })
+
+  it("a trial is over only for a company marked trial that has an end in the past — never for one without an end", () => {
+    const fn = rules.slice(rules.indexOf("function trialOver("), rules.indexOf("function getOrganizationId()"))
+    expect(fn).toContain("m.get('subscription', '') == 'trial'")
+    expect(fn).toContain("m.get('trialEndsMs', null) != null")
+    expect(fn).toContain("request.time.toMillis() > m.trialEndsMs")
   })
 })

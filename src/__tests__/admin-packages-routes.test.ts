@@ -194,6 +194,46 @@ describe("the save route", () => {
     expect((await save(post({ orgId: ORG, off: [], subscription: "paid" }))).status).toBe(400)
   })
 
+  it("a trial gets its length from the save: the clock starts now and ends that many days later", async () => {
+    const before = Date.now()
+    const res = await save(post({ orgId: ORG, off: [], subscription: "trial", trialDays: 10 }))
+    expect(res.status).toBe(200)
+    const row = stored() as unknown as { subscription: string; trialDays: number; trialStartedAt: string; trialEndsAt: string }
+    expect(row).toMatchObject({ subscription: "trial", trialDays: 10 })
+    const start = Date.parse(row.trialStartedAt)
+    expect(start).toBeGreaterThanOrEqual(before)
+    expect(Date.parse(row.trialEndsAt) - start).toBe(10 * 86_400_000)
+    expect((row as unknown as { trialEndsMs: number }).trialEndsMs).toBe(Date.parse(row.trialEndsAt))
+  })
+
+  it("choosing «trial» without a length uses the default, and a length alone means a trial", async () => {
+    await save(post({ orgId: ORG, off: [], subscription: "trial" }))
+    expect(stored()).toMatchObject({ subscription: "trial", trialDays: 14 })
+    mockDb.docs.delete(`companyModules/${ORG}`)
+    await save(post({ orgId: ORG, off: [], trialDays: 5 }))
+    expect(stored()).toMatchObject({ subscription: "trial", trialDays: 5 })
+  })
+
+  it("saving a length on a running trial restarts it; saving without one leaves the dates as they were", async () => {
+    mockDb.seed(`companyModules/${ORG}`, { organizationId: ORG, off: [], history: [], subscription: "trial", trialDays: 3, trialStartedAt: "2020-01-01T00:00:00.000Z", trialEndsAt: "2020-01-04T00:00:00.000Z" })
+    await save(post({ orgId: ORG, off: ["manufacturing"] }))
+    expect(stored()).toMatchObject({ trialEndsAt: "2020-01-04T00:00:00.000Z" })
+    await save(post({ orgId: ORG, off: ["manufacturing"], trialDays: 30 }))
+    const row = stored() as unknown as { trialStartedAt: string; trialEndsAt: string }
+    expect(Date.parse(row.trialStartedAt)).toBeGreaterThan(Date.parse("2021-01-01"))
+    expect(Date.parse(row.trialEndsAt) - Date.parse(row.trialStartedAt)).toBe(30 * 86_400_000)
+  })
+
+  it("going back to Active clears the dates; a length is refused with Active, or out of range", async () => {
+    mockDb.seed(`companyModules/${ORG}`, { organizationId: ORG, off: [], history: [], subscription: "trial", trialDays: 3, trialStartedAt: "2020-01-01T00:00:00.000Z", trialEndsAt: "2020-01-04T00:00:00.000Z" })
+    await save(post({ orgId: ORG, off: [], subscription: "active" }))
+    expect(stored()).toMatchObject({ subscription: "active", trialDays: null, trialStartedAt: null, trialEndsAt: null, trialEndsMs: null })
+    expect((await save(post({ orgId: ORG, off: [], subscription: "active", trialDays: 5 }))).status).toBe(400)
+    expect((await save(post({ orgId: ORG, off: [], trialDays: 0 }))).status).toBe(400)
+    expect((await save(post({ orgId: ORG, off: [], trialDays: 366 }))).status).toBe(400)
+    expect((await save(post({ orgId: ORG, off: [], trialDays: 2.5 }))).status).toBe(400)
+  })
+
   it("keeps the last twenty history entries and the earlier ones in order", async () => {
     mockDb.seed(`companyModules/${ORG}`, { organizationId: ORG, off: [], history: Array.from({ length: 20 }, (_, i) => ({ id: `h${i}` })) })
     await save(post({ orgId: ORG, off: ["manufacturing"] }))
@@ -229,11 +269,94 @@ describe("a new contractor starts on the base package", () => {
     expect((mockDb.get("companyModules/newUid") as { off: string[] }).off).toEqual([])
   })
 
+  it("opened as a trial, the account starts its clock the moment it is created", async () => {
+    const before = Date.now()
+    const res = await create({ trialDays: 21 })
+    expect(res.status).toBe(200)
+    const row = mockDb.get("companyModules/newUid") as { subscription: string; trialDays: number; trialStartedAt: string; trialEndsAt: string }
+    expect(row).toMatchObject({ subscription: "trial", trialDays: 21 })
+    expect(Date.parse(row.trialStartedAt)).toBeGreaterThanOrEqual(before)
+    expect(Date.parse(row.trialEndsAt) - Date.parse(row.trialStartedAt)).toBe(21 * 86_400_000)
+  })
+
+  it("without a trial the account has no subscription fields; a bad length is refused before anything is created", async () => {
+    await create({})
+    expect(mockDb.get("companyModules/newUid")).not.toHaveProperty("subscription")
+    mockCreateUser.mockClear()
+    expect((await create({ trialDays: 0 })).status).toBe(400)
+    expect((await create({ trialDays: 1000 })).status).toBe(400)
+    expect(mockCreateUser).not.toHaveBeenCalled()
+  })
+
+  it("a trial is for contractors only", async () => {
+    const res = await createUser(
+      new NextRequest("http://localhost/api/admin/users/create", { method: "POST", headers: { authorization: "Bearer admin", "content-type": "application/json" }, body: JSON.stringify({ name: "S", email: "s@x.sa", role: "Supplier", specialtyIds: ["x"], trialDays: 7 }) }),
+    )
+    expect(res.status).toBe(400)
+  })
+
   it("a supplier is not given a contractor's package", async () => {
     await createUser(
       new NextRequest("http://localhost/api/admin/users/create", { method: "POST", headers: { authorization: "Bearer admin", "content-type": "application/json" }, body: JSON.stringify({ name: "S", email: "s@x.sa", role: "Supplier", specialtyIds: ["x"] }) }),
     )
     expect(mockDb.get("users/newUid")).toMatchObject({ role: "Supplier" })
     expect(mockDb.get("companyModules/newUid")).toBeUndefined()
+  })
+})
+
+describe("a trial that cannot be written is not left open-ended", () => {
+  const create = (body: Record<string, unknown>) =>
+    createUser(new NextRequest("http://localhost/api/admin/users/create", { method: "POST", headers: { authorization: "Bearer admin", "content-type": "application/json" }, body: JSON.stringify({ name: "New Co", email: "n@x.sa", role: "Contractor", ...body }) }))
+
+  it("the account, its profile and the Auth user are undone, and the admin is told", async () => {
+    const real = mockDb.collection.bind(mockDb)
+    const spy = jest.spyOn(mockDb, "collection").mockImplementation((name: string) => {
+      const c = real(name)
+      if (name !== "companyModules") return c
+      return { ...c, doc: (id: string) => ({ ...c.doc(id), set: async () => Promise.reject(new Error("write failed")) }) } as never
+    })
+    mockDeleteUser.mockClear()
+    const res = await create({ trialDays: 7 })
+    spy.mockRestore()
+    expect(res.status).toBe(500)
+    expect(mockDeleteUser).toHaveBeenCalledWith("newUid")
+    expect(mockDb.get("users/newUid")).toBeUndefined()
+  })
+
+  it("without a trial a failed package write still leaves the account (the admin sets the package later)", async () => {
+    const real = mockDb.collection.bind(mockDb)
+    const spy = jest.spyOn(mockDb, "collection").mockImplementation((name: string) => {
+      const c = real(name)
+      if (name !== "companyModules") return c
+      return { ...c, doc: (id: string) => ({ ...c.doc(id), set: async () => Promise.reject(new Error("write failed")) }) } as never
+    })
+    const res = await create({})
+    spy.mockRestore()
+    expect(res.status).toBe(200)
+    expect(mockDb.get("users/newUid")).toMatchObject({ role: "Contractor" })
+  })
+})
+
+describe("a supplier given the paid portal for a few days", () => {
+  const create = (body: Record<string, unknown>) =>
+    createUser(new NextRequest("http://localhost/api/admin/users/create", { method: "POST", headers: { authorization: "Bearer admin", "content-type": "application/json" }, body: JSON.stringify({ name: "S Co", email: "s@x.sa", role: "Supplier", specialtyIds: ["x"], ...body }) }))
+
+  it("gets the full plan with an end date; the clock starts at creation", async () => {
+    const before = Date.now()
+    const res = await create({ paidTrialDays: 7 })
+    expect(res.status).toBe(200)
+    const plan = mockDb.get("companyPlans/newUid") as { supplierPlan: string; planTrialDays: number; planTrialStartedAt: string; planTrialEndsAt: string }
+    expect(plan).toMatchObject({ supplierPlan: "full", planTrialDays: 7 })
+    expect(Date.parse(plan.planTrialStartedAt)).toBeGreaterThanOrEqual(before)
+    expect(Date.parse(plan.planTrialEndsAt) - Date.parse(plan.planTrialStartedAt)).toBe(7 * 86_400_000)
+  })
+
+  it("without it the supplier has no plan document (free by default); a contractor cannot be given a paid trial", async () => {
+    await create({})
+    expect(mockDb.get("companyPlans/newUid")).toBeUndefined()
+    const res = await createUser(
+      new NextRequest("http://localhost/api/admin/users/create", { method: "POST", headers: { authorization: "Bearer admin", "content-type": "application/json" }, body: JSON.stringify({ name: "C", email: "c@x.sa", role: "Contractor", paidTrialDays: 7 }) }),
+    )
+    expect(res.status).toBe(400)
   })
 })

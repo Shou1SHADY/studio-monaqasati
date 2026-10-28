@@ -13,6 +13,8 @@ import { Callout } from "@/components/module-ui/Callout"
 import { useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { BASE_PACKAGE, CONNECTORS, type Connector, type PackageFlags } from "@/lib/procurement/package"
+import { TRIAL_DEFAULT_DAYS, parseTrialDays } from "@/lib/subscription-status"
+import { TrialDaysInput } from "@/components/admin/TrialDaysInput"
 import { UnitIcon } from "./PackageIcons"
 
 /** «مقاول جديد»: starts on the base package; the connectors ticked here are opened with the account, the rest the admin sets on the contractor's page. */
@@ -26,8 +28,11 @@ export function NewContractorDialog({ open, onOpenChange }: { open: boolean; onO
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [pkg, setPkg] = useState<PackageFlags>(BASE_PACKAGE)
+  const [trial, setTrial] = useState(false)
+  const [trialDays, setTrialDays] = useState(String(TRIAL_DEFAULT_DAYS))
   const [busy, setBusy] = useState(false)
-  const ready = name.trim() !== "" && email.trim() !== ""
+  const trialLength = trial ? parseTrialDays(trialDays) : null
+  const ready = name.trim() !== "" && email.trim() !== "" && (!trial || trialLength !== null)
 
   const submit = async () => {
     if (!user || !ready) return
@@ -37,7 +42,7 @@ export function NewContractorDialog({ open, onOpenChange }: { open: boolean; onO
       const res = await fetch("/api/admin/users/create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name, email, phone, role: "Contractor", connectors: pkg }),
+        body: JSON.stringify({ name, email, phone, role: "Contractor", connectors: pkg, trialDays: trialLength ?? undefined }),
       })
       const body = (await res.json().catch(() => null)) as { success?: boolean; code?: string; data?: { uid?: string } } | null
       if (!res.ok || !body?.success) {
@@ -94,6 +99,16 @@ export function NewContractorDialog({ open, onOpenChange }: { open: boolean; onO
               </label>
             ))}
           </fieldset>
+          <div className="space-y-3 rounded-lg border px-3 py-2.5">
+            <label className="flex items-start justify-between gap-3">
+              <span className="min-w-0 text-sm font-bold">
+                {t("trial")}
+                <span className="block text-xs font-normal text-muted-foreground">{t("trial_desc")}</span>
+              </span>
+              <Switch checked={trial} onCheckedChange={setTrial} aria-label={t("trial")} disabled={busy} />
+            </label>
+            {trial && <TrialDaysInput id="nc-trial-days" label={t("trial_days")} value={trialDays} onChange={setTrialDays} disabled={busy} />}
+          </div>
           <Callout tone="info">{t("note")}</Callout>
         </div>
         <DialogFooter>

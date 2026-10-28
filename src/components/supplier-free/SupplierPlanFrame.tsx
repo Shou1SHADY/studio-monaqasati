@@ -20,9 +20,9 @@ import { useFree } from "./useFree"
 import { useFreeNotifications } from "./useFreeNotifications"
 
 export function SupplierPlanFrame({ children }: { children: ReactNode }) {
-  const { plan, loading, orgId } = useSupplierPlan()
+  const { plan, loading, orgId, trial } = useSupplierPlan()
   // The pages' PlanSwitch and the portal frame read this answer: one subscription for the layout, never one per page.
-  const state = useMemo<PlanState>(() => ({ plan, loading, orgId }), [plan, loading, orgId])
+  const state = useMemo<PlanState>(() => ({ plan, loading, orgId, trial }), [plan, loading, orgId, trial])
   if (loading) return <Splash />
   return <SupplierPlanContext.Provider value={state}>{plan === "full" ? children : <FreeShell>{children}</FreeShell>}</SupplierPlanContext.Provider>
 }

@@ -39,6 +39,8 @@ import {
 import { decideSupplierSpecs, setSupplierApproval, standingRefOfCompany } from "@/lib/supplier-admin-writes"
 import type { ApprovalState } from "@/lib/supplier-approval"
 import { setSupplierPlan } from "@/lib/supplier-plan-writes"
+import { PAID_TRIAL_DEFAULT_DAYS, parseTrialDays } from "@/lib/subscription-status"
+import { TrialDaysInput } from "@/components/admin/TrialDaysInput"
 import { cn } from "@/lib/utils"
 
 const PAGE = 20
@@ -141,14 +143,19 @@ export function FreeSuppliersView() {
     }
   }
 
+  const [asTrial, setAsTrial] = useState(false)
+  const [trialDays, setTrialDays] = useState(String(PAID_TRIAL_DEFAULT_DAYS))
+  const trialLength = asTrial ? parseTrialDays(trialDays) : null
   const switchToFull = async () => {
     if (!firestore || !user || !upgrading) return
+    if (asTrial && trialLength === null) return
     const target = upgrading
     setBusyId(target.id)
     try {
-      await setSupplierPlan(firestore, target.id, "full", { uid: user.uid, name: user.displayName || user.email || "" })
-      toast({ title: t("upgrade_done", { name: target.name }) })
+      await setSupplierPlan(firestore, target.id, "full", { uid: user.uid, name: user.displayName || user.email || "" }, trialLength ?? undefined)
+      toast({ title: trialLength !== null ? t("upgrade_trial_done", { name: target.name, days: trialLength }) : t("upgrade_done", { name: target.name }) })
       setUpgrading(null)
+      setAsTrial(false)
     } catch (e) {
       toast({ title: t("upgrade_failed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
     } finally {
@@ -374,17 +381,27 @@ export function FreeSuppliersView() {
               <span className="mt-2 block">{t("upgrade_note")}</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-3 rounded-lg border px-3 py-2.5 text-sm">
+            <label className="flex cursor-pointer items-start gap-2">
+              <input type="checkbox" className="mt-1" checked={asTrial} onChange={(e) => setAsTrial(e.target.checked)} disabled={busyId !== null} />
+              <span>
+                <b className="block">{t("upgrade_trial")}</b>
+                <span className="text-xs text-muted-foreground">{t("upgrade_trial_desc")}</span>
+              </span>
+            </label>
+            {asTrial && <TrialDaysInput id="fs-trial-days" label={t("upgrade_trial_days")} value={trialDays} onChange={setTrialDays} disabled={busyId !== null} />}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busyId !== null}>{t("upgrade_cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              disabled={busyId !== null}
+              disabled={busyId !== null || (asTrial && trialLength === null)}
               onClick={(e) => {
                 e.preventDefault()
                 void switchToFull()
               }}
             >
               {busyId !== null && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
-              {t("upgrade_confirm")}
+              {t(asTrial ? "upgrade_trial_confirm" : "upgrade_confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

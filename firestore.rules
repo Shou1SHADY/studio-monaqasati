@@ -55,9 +55,21 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function getOrganizationId() {
+    function getRawOrganizationId() {
       let userData = getUserData();
       return userData.organizationId != null ? userData.organizationId : "";
+    }
+
+    // A company whose trial has run out belongs to no organisation as far as every rule is concerned, so nothing it owns can be
+    // read or written by its members (the admin SDK and other companies are unaffected). companyModules/{orgId} keeps the end as
+    // a number — the rules cannot read the ISO text; only its own read rule uses the raw id, so the lock page can still say why.
+    function trialOver(m) {
+      return m.get('subscription', '') == 'trial' && m.get('trialEndsMs', null) != null && request.time.toMillis() > m.trialEndsMs;
+    }
+    function getOrganizationId() {
+      let org = getRawOrganizationId();
+      return org != '' && exists(/databases/$(database)/documents/companyModules/$(org))
+        && trialOver(get(/databases/$(database)/documents/companyModules/$(org)).data) ? '' : org;
     }
 
     function hasRole(role) {
@@ -4127,7 +4139,7 @@ service cloud.firestore {
     // Component switches (7 Oct 2026) — which optional components (Project Management, HR, Manufacturing) a company
     // has switched off, set by the platform admin only. A company reads its own so its menu and pages can follow.
     match /companyModules/{orgId} {
-      allow get: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow get: if isSignedIn() && (isAdmin() || getRawOrganizationId() == orgId);
       allow list: if isAdmin();
       allow create, update: if isAdmin() && request.resource.data.off is list;
       allow delete: if false;

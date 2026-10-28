@@ -5,7 +5,7 @@ import { collection } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { COMPANY_MODULES, offSet } from "@/lib/company-modules"
 import { CONNECTORS, packageOf, type Connector, type PackageFlags } from "@/lib/procurement/package"
-import { subscriptionStatusOf, type SubscriptionStatus } from "@/lib/subscription-status"
+import { subscriptionStateOf, subscriptionStatusOf, type SubscriptionState, type SubscriptionStatus } from "@/lib/subscription-status"
 
 export interface CompanyPackage {
   off: string[]
@@ -14,6 +14,8 @@ export interface CompanyPackage {
   missing: Connector[]
   /** «نشط» / «تجريبي» beside the package (AD-03) — no field is Active. */
   subscription: SubscriptionStatus
+  /** The trial's clock — «expired» once its days ran out. */
+  trial: SubscriptionState
 }
 
 const answerOf = (raw: unknown) => raw === 1
@@ -26,14 +28,15 @@ export function useCompanyPackages(): { byOrg: ReadonlyMap<string, CompanyPackag
   const { data, isLoading } = useCollection(q)
   const byOrg = useMemo(() => {
     const map = new Map<string, CompanyPackage>()
-    for (const row of (data || []) as Array<{ id: string; off?: unknown; needs?: Record<string, unknown>; subscription?: unknown }>) {
+    const now = new Date()
+    for (const row of (data || []) as Array<{ id: string; off?: unknown; needs?: Record<string, unknown>; subscription?: unknown; trialEndsAt?: unknown }>) {
       const off = [...offSet(row, "contractor")]
       const pkg = packageOf(off)
-      map.set(row.id, { off, pkg, missing: CONNECTORS.filter((c) => answerOf(row.needs?.[c]) && !pkg[c]), subscription: subscriptionStatusOf(row.subscription) })
+      map.set(row.id, { off, pkg, missing: CONNECTORS.filter((c) => answerOf(row.needs?.[c]) && !pkg[c]), subscription: subscriptionStatusOf(row.subscription), trial: subscriptionStateOf(row, now) })
     }
     return map
   }, [data])
   return { byOrg, isLoading }
 }
 
-export const FULL_COMPANY_PACKAGE: CompanyPackage = { off: [], pkg: packageOf([]), missing: [], subscription: "active" }
+export const FULL_COMPANY_PACKAGE: CompanyPackage = { off: [], pkg: packageOf([]), missing: [], subscription: "active", trial: { phase: "active", endsAt: null, daysLeft: null } }

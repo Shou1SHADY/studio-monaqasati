@@ -5,6 +5,7 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { SAUDI_CITIES } from "@/lib/constants"
 import { isSecondaryOrgAdmin } from "@/lib/org-identity-admin"
 import { serverMaterialTree } from "@/lib/materials/tree-server"
+import { planOf, type PlanDoc } from "@/lib/supplier-plan"
 
 // A free supplier's specialties (sub-categories of the material tree, PUR-04) and coverage cities (PRD ACC-02): at
 // least one of each, and the quote requests that reach him follow AT ONCE. On the full portal the same fields wait for the platform's approval, so this route
@@ -42,8 +43,8 @@ export async function POST(req: Request) {
   const orgId = user.organizationId || uid
   const isOwner = orgId === uid || user.organizationRole === "owner"
   if (!isOwner) return fail("Only the company owner edits specialties", "FORBIDDEN", 403)
-  const plan = (await db.collection("companyPlans").doc(orgId).get()).data() as { supplierPlan?: string } | undefined
-  if (plan?.supplierPlan === "full") return fail("This company's specialties go through approval", "FORBIDDEN", 403)
+  const plan = (await db.collection("companyPlans").doc(orgId).get()).data() as PlanDoc | undefined
+  if (planOf(plan) === "full") return fail("This company's specialties go through approval", "FORBIDDEN", 403)
 
   const target = isSecondaryOrgAdmin(user.organizationId, uid, user.organizationRole) ? db.collection("organizations").doc(orgId) : db.collection("users").doc(uid)
   await target.set(

@@ -78,6 +78,7 @@ export type ProcEventKind =
   | "team_request_returned" // → the requester: returned with a reason — edit and send again
   | "team_request_released" // → buyers (offers.accept / rfq.manage) + owner: an approved team request reached Incoming
   | "team_request_escalated" // → the owner: a team request waited past the window (daily job)
+  | "plan_trial_ended" // → a supplier company's owner: the paid-plan trial is over, the company is back on the free plan (daily job)
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -140,6 +141,7 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "team_request_returned",
   "team_request_released",
   "team_request_escalated",
+  "plan_trial_ended",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -432,6 +434,10 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   team_request_escalated: {
     title: "طلب المواد {number} ينتظر الاعتماد منذ {days} أيام",
     message: "ينتظر طلب المواد {number} من {name} اعتماده منذ {days} أيام. اعتمده أو أعده.",
+  },
+  plan_trial_ended: {
+    title: "انتهت تجربة الباقة المدفوعة",
+    message: "عاد حسابكم إلى الباقة المجانية وبياناتكم كلها محفوظة. تواصلوا مع فريق مدمك لتفعيل الاشتراك.",
   },
 }
 

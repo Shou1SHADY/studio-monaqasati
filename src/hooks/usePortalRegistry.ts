@@ -9,11 +9,14 @@ import { createContext, useContext } from "react"
 import { supplierRegistry, type ModulePortal } from "@/lib/company-modules"
 import { CONTRACTOR_COMPONENTS, type PortalComponentDef } from "@/lib/portal-components"
 import type { SupplierPlan } from "@/lib/supplier-plan"
+import type { TrialClock } from "@/lib/subscription-status"
 
 export interface PlanState {
   plan: SupplierPlan
   loading: boolean
   orgId: string | null
+  /** The paid trial of a company on «full» — absent outside the supplier layout. */
+  trial?: TrialClock
 }
 
 /** The plan the supplier layout already read: every page under it reads this one answer instead of subscribing again,
@@ -22,6 +25,11 @@ export const SupplierPlanContext = createContext<PlanState | null>(null)
 
 /** The plan from the layout, or null outside it. */
 export const usePlanContext = () => useContext(SupplierPlanContext)
+
+/** The paid trial the company is on, if any — none outside the supplier layout. */
+export function useSupplierTrial(): TrialClock {
+  return usePlanContext()?.trial ?? { phase: "none", endsAt: null, daysLeft: null }
+}
 
 /** The supplier's plan as the frame should draw it: "full" outside the supplier layout. */
 export function useSupplierPlanName(): SupplierPlan {

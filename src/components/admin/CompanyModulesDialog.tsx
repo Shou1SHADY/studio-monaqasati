@@ -6,7 +6,7 @@
 // The company's menu, tiles and pages follow at once.
 
 import { useEffect, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,9 @@ import { useToast } from "@/hooks/use-toast"
 import { COMPANY_MODULES, SALES_ONLY_OFF, forcedOffBy, offSet, optionalFor, withDependents, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
 import { setCompanyModules } from "@/lib/company-modules-writes"
 import { readPending, warningsFor, type PendingByModule } from "@/lib/company-modules-pending"
-import { COMPANY_PLANS, planOf, type SupplierPlan } from "@/lib/supplier-plan"
+import { COMPANY_PLANS, planOf, planTrialOf, type PlanDoc, type SupplierPlan } from "@/lib/supplier-plan"
+import { PAID_TRIAL_DEFAULT_DAYS, parseTrialDays, trialDayText } from "@/lib/subscription-status"
+import { TrialDaysInput } from "@/components/admin/TrialDaysInput"
 import { setSupplierPlan } from "@/lib/supplier-plan-writes"
 
 const LABEL: Record<OptionalModule, { name: string; desc: string }> = {
@@ -33,6 +35,7 @@ const LABEL: Record<OptionalModule, { name: string; desc: string }> = {
 export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { orgId: string; companyName: string; portal: ModulePortal; onClose: () => void }) {
   const t = useTranslations("Portal.AdminModules")
   const tSide = useTranslations("Portal.Sidebar")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
@@ -42,6 +45,10 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
   const { data: planDoc, isLoading: planLoading } = useDoc(planRef)
   const [plan, setPlan] = useState<SupplierPlan>("free")
   const [initialPlan, setInitialPlan] = useState<SupplierPlan>("free")
+  const [trialOn, setTrialOn] = useState(false)
+  const [initialTrialOn, setInitialTrialOn] = useState(false)
+  const [trialDays, setTrialDays] = useState(String(PAID_TRIAL_DEFAULT_DAYS))
+  const [trialTouched, setTrialTouched] = useState(false)
   const [off, setOff] = useState<ReadonlySet<OptionalModule>>(new Set())
   const [ready, setReady] = useState(false)
   const [initial, setInitial] = useState<ReadonlySet<OptionalModule>>(new Set())
@@ -53,9 +60,14 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
     const current = offSet(data as { off?: unknown } | null, portal)
     setOff(current)
     setInitial(current)
-    const p = planOf(planDoc as { supplierPlan?: unknown } | null)
+    const p = planOf(planDoc as PlanDoc | null)
     setPlan(p)
     setInitialPlan(p)
+    const stored = planDoc as (PlanDoc & { planTrialDays?: unknown }) | null
+    const hasTrial = planTrialOf(stored).phase !== "none"
+    setTrialOn(hasTrial)
+    setInitialTrialOn(hasTrial)
+    if (hasTrial && typeof stored?.planTrialDays === "number") setTrialDays(String(stored.planTrialDays))
     setReady(true)
   }, [isLoading, planLoading, data, planDoc, portal, ready])
 
@@ -74,6 +86,10 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
   }
 
   const warnings = pending ? warningsFor(initial, off, pending) : []
+  const trialLength = plan === "full" && trialOn ? parseTrialDays(trialDays) : null
+  const planChanged = plan !== initialPlan || (plan === "full" && (trialOn !== initialTrialOn || trialTouched))
+  const trialInvalid = portal === "supplier" && plan === "full" && trialOn && trialLength === null
+  const trialClock = planTrialOf(planDoc as PlanDoc | null)
 
   const fetchPending = async (): Promise<PendingByModule> => {
     if (!user) return {}
@@ -95,7 +111,7 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
         if (warningsFor(initial, off, found).length > 0) return
       }
       await setCompanyModules(firestore, orgId, [...off], { uid: user.uid, name: user.displayName || user.email || "" })
-      if (portal === "supplier" && plan !== initialPlan) await setSupplierPlan(firestore, orgId, plan, { uid: user.uid, name: user.displayName || user.email || "" })
+      if (portal === "supplier" && planChanged) await setSupplierPlan(firestore, orgId, plan, { uid: user.uid, name: user.displayName || user.email || "" }, trialLength ?? undefined)
       toast({ title: t("saved") })
       onClose()
     } catch (err) {
@@ -133,6 +149,29 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
                     </label>
                   ))}
                 </div>
+                {plan === "full" && (
+                  <div className="mt-3 space-y-3 border-t pt-3 text-sm">
+                    <label className="flex cursor-pointer items-center gap-2 font-bold">
+                      <input type="checkbox" checked={trialOn} onChange={(e) => setTrialOn(e.target.checked)} disabled={busy} />
+                      {t("plan_trial")}
+                    </label>
+                    {trialOn && (
+                      <TrialDaysInput
+                        id="plan-trial-days"
+                        label={t("plan_trial_days")}
+                        value={trialDays}
+                        onChange={(v) => {
+                          setTrialDays(v)
+                          setTrialTouched(true)
+                        }}
+                        disabled={busy}
+                      />
+                    )}
+                    {trialClock.phase === "running" && !trialTouched && <p className="text-xs text-muted-foreground">{t("plan_trial_running", { date: trialDayText(trialClock.endsAt, locale), count: trialClock.daysLeft ?? 0 })}</p>}
+                    {trialOn && (trialTouched || trialClock.phase === "none") && <p className="text-xs text-muted-foreground">{t("plan_trial_restart")}</p>}
+                  </div>
+                )}
+                {plan === "free" && trialClock.phase === "ended" && <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">{t("plan_trial_ended", { date: trialDayText(trialClock.endsAt, locale) })}</p>}
               </fieldset>
             )}
             {/* Most suppliers only sell: one press leaves Order Management, Sales and Governance. */}
@@ -188,7 +227,7 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {t("cancel")}
           </Button>
-          <Button onClick={() => void save()} disabled={!ready || busy}>
+          <Button onClick={() => void save()} disabled={!ready || busy || trialInvalid}>
             {busy && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
             {warnings.length > 0 ? t("confirm_off") : t("save")}
           </Button>

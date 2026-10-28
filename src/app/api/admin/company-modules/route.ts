@@ -4,7 +4,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { adminCaller, adminError } from "@/lib/admin-caller-server"
 import { COMPANY_MODULES } from "@/lib/company-modules"
-import { SUBSCRIPTION_STATUSES, subscriptionStatusOf } from "@/lib/subscription-status"
+import { NO_TRIAL_WINDOW, SUBSCRIPTION_STATUSES, TRIAL_DEFAULT_DAYS, TRIAL_MAX_DAYS, subscriptionStatusOf, trialWindow } from "@/lib/subscription-status"
 import { assessPackageChange, assessmentIsQuiet, contractorOff, readStoredModules } from "@/lib/procurement/package-change-server"
 import { applyPendingChanges, pendingEntries } from "@/lib/procurement/package-migration-server"
 import { companyRoleOf } from "@/lib/admin-accounts"
@@ -29,7 +29,16 @@ const bodySchema = z.object({
   ack: z.boolean().optional(),
   /** «نشط» / «تجريبي» beside the package (AD-03) — absent leaves it as stored. */
   subscription: z.enum(SUBSCRIPTION_STATUSES).optional(),
-})
+  /** How long the trial runs, counted from this save — it (re)starts the clock. Only with «تجريبي». */
+  trialDays: z.number().int().min(1).max(TRIAL_MAX_DAYS).optional(),
+}).refine((b) => b.trialDays === undefined || b.subscription !== "active", { message: "A trial length needs the trial status", path: ["trialDays"] })
+
+/** A new trial starts its clock now; going back to Active clears the trial's dates. Nothing else is written when the status did not move. */
+const subscriptionFields = (next: "active" | "trial", changed: boolean, startsTrial: boolean, days: number | undefined, now: Date) => {
+  if (startsTrial) return { subscription: next, ...trialWindow(days ?? TRIAL_DEFAULT_DAYS, now) }
+  if (next === "active" && changed) return { subscription: next, ...NO_TRIAL_WINDOW }
+  return {}
+}
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
 
@@ -62,8 +71,11 @@ export async function POST(req: NextRequest) {
     const nextOff = contractorOff(parsed.data.off)
     const nextNeeds = { ...stored.needs, ...(parsed.data.needs || {}) }
     const needsChanged = JSON.stringify(nextNeeds) !== JSON.stringify(stored.needs)
-    const subscriptionChanged = parsed.data.subscription !== undefined && parsed.data.subscription !== subscriptionStatusOf(stored.subscription)
-    if (sameList(stored.off, nextOff) && !needsChanged && !subscriptionChanged) {
+    const storedSubscription = subscriptionStatusOf(stored.subscription)
+    const nextSubscription = parsed.data.subscription ?? (parsed.data.trialDays !== undefined ? "trial" : storedSubscription)
+    const subscriptionChanged = nextSubscription !== storedSubscription
+    const startsTrial = nextSubscription === "trial" && (parsed.data.trialDays !== undefined || subscriptionChanged)
+    if (sameList(stored.off, nextOff) && !needsChanged && !subscriptionChanged && !startsTrial) {
       if (!pendingEntries(stored.history)) return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [] } })
       const resumed = await runMigration(db, orgId, caller, nextOff)
       return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [], ...resumed } })
@@ -83,7 +95,7 @@ export async function POST(req: NextRequest) {
     await db
       .collection(COMPANY_MODULES)
       .doc(orgId)
-      .set({ organizationId: orgId, off: nextOff, needs: nextNeeds, ...(subscriptionChanged ? { subscription: parsed.data.subscription } : {}), history, updatedById: caller.uid, updatedByName: caller.name, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      .set({ organizationId: orgId, off: nextOff, needs: nextNeeds, ...subscriptionFields(nextSubscription, subscriptionChanged, startsTrial, parsed.data.trialDays, new Date(at)), history, updatedById: caller.uid, updatedByName: caller.name, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
 
     const migrated = await runMigration(db, orgId, caller, nextOff)
     return NextResponse.json({ success: true, data: { unchanged: false, off: nextOff, changed: entries.map((e) => ({ id: e.id, connector: e.connector, to: e.to })), ...migrated } })

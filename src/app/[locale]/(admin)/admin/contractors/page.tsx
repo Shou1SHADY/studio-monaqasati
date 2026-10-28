@@ -311,7 +311,7 @@ export default function AdminContractorsPage() {
                 labels={{ core: tProc("base.core.short"), inv: tProc("base.inv.short"), pm: tProc("conn.pm.short"), fin: tProc("conn.fin.short"), mfg: tProc("conn.mfg.short") }}
               />
             </Link>
-            <SubscriptionStatusPill status={pkg.subscription} />
+            <SubscriptionStatusPill status={pkg.trial.phase} daysLeft={pkg.trial.daysLeft} />
           </div>
         )
       },

@@ -24,7 +24,7 @@ import { packageLabel, packageOf } from "@/lib/procurement/package"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
-import { subscriptionStatusOf } from "@/lib/subscription-status"
+import { subscriptionStateOf } from "@/lib/subscription-status"
 import { cn } from "@/lib/utils"
 import { PackageChips } from "./PackageIcons"
 import { SubscriptionStatusPill } from "./SubscriptionStatusPill"
@@ -91,7 +91,7 @@ export function ContractorPackagePreview({ orgId }: { orgId: string }) {
                 <b className="text-module" data-testid="preview-package-label">
                   {packageLabel(pkg, tp)}
                 </b>
-                <SubscriptionStatusPill status={subscriptionStatusOf((stored as { subscription?: unknown } | null)?.subscription)} />
+                <SubscriptionStatusPill status={subscriptionStateOf(stored as { subscription?: unknown; trialEndsAt?: unknown } | null, new Date()).phase} />
                 <PackageChips pkg={pkg} labels={labels} />
               </p>
             </header>

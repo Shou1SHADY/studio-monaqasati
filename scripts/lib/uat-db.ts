@@ -18,5 +18,8 @@ export function openUatDb(): { db: Firestore; via: "key" | "gcloud"; projectId: 
   }
   const authClient = new OAuth2Client()
   authClient.setCredentials({ access_token: execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim() })
+  // The installed gax calls `headers.forEach` on what the auth client returns; this auth client returns a plain object.
+  const getRequestHeaders = authClient.getRequestHeaders.bind(authClient)
+  ;(authClient as unknown as { getRequestHeaders: unknown }).getRequestHeaders = async (url?: string) => new Headers(await getRequestHeaders(url))
   return { db: new Firestore({ projectId: UAT_PROJECT, authClient }), via: "gcloud", projectId: UAT_PROJECT }
 }

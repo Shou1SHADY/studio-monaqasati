@@ -23,6 +23,8 @@ import { can as resolveCan, type PermissionId, type TeamGroup } from "@/lib/perm
 import { linesForReceipt } from "@/lib/procurement/receipts"
 import { HOLD_REASON_CODES, REJECT_REASON_CODES } from "@/lib/procurement/po"
 import { PURCHASE_ORDERS, type DeliveryLine, type HoldReasonCode, type PurchaseOrder } from "@/lib/procurement/types"
+import { COMPANY_MODULES } from "@/lib/company-modules"
+import { subscriptionStateOf } from "@/lib/subscription-status"
 import { maskPhone } from "@/lib/otp"
 import { normalizePhoneE164 } from "@/lib/sms"
 
@@ -214,11 +216,13 @@ export interface Caller {
 
 /** The signed-in caller's organisation and permissions, resolved the way the
  * security rules resolve them — a profile with no `organizationRole` field is
- * a legacy owner. */
+ * a legacy owner. A company whose trial has run out has no caller at all: every route that starts here refuses it. */
 export async function callerOf(db: Firestore, uid: string): Promise<Caller | null> {
   const profile = (await db.collection("users").doc(uid).get()).data() as Record<string, unknown> | undefined
   if (!profile) return null
   const orgId = (profile.organizationId as string) || uid
+  const subscription = (await db.collection(COMPANY_MODULES).doc(orgId).get()).data()
+  if (subscriptionStateOf(subscription, new Date()).phase === "expired") return null
   const role = !("organizationRole" in profile) ? "owner" : ((profile.organizationRole as string | null) || null)
   const groupsSnap = await db.collection("teamGroups").where("organizationId", "==", orgId).get()
   const groups = groupsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as TeamGroup)

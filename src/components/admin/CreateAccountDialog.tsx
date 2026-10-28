@@ -14,6 +14,8 @@ import type { LeadKind, LeadSource } from "@/lib/admin-crm"
 import { MaterialSubsPicker } from "@/components/materials/MaterialSubsPicker"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { cn } from "@/lib/utils"
+import { PAID_TRIAL_DEFAULT_DAYS, TRIAL_DEFAULT_DAYS, parseTrialDays } from "@/lib/subscription-status"
+import { TrialDaysInput } from "@/components/admin/TrialDaysInput"
 
 /** The lead an account is being created for — enough to prefill the form and to mark the lead converted. */
 export type AccountLead = {
@@ -69,9 +71,20 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
   const [specs, setSpecs] = useState<string[]>([])
   // Most suppliers only sell (11 Oct 2026): the account starts with Order Management, Sales and Governance only.
   const [salesOnly, setSalesOnly] = useState(true)
+  const [trial, setTrial] = useState(false)
+  const [trialDays, setTrialDays] = useState(String(TRIAL_DEFAULT_DAYS))
+  const [paidTrial, setPaidTrial] = useState(false)
+  const [paidTrialDays, setPaidTrialDays] = useState(String(PAID_TRIAL_DEFAULT_DAYS))
   const [busy, setBusy] = useState(false)
 
-  const ready = name.trim() !== "" && email.trim() !== "" && (role === "Contractor" || specs.length > 0)
+  const trialLength = role === "Contractor" && trial ? parseTrialDays(trialDays) : null
+  const paidTrialLength = role === "Supplier" && paidTrial ? parseTrialDays(paidTrialDays) : null
+  const ready =
+    name.trim() !== "" &&
+    email.trim() !== "" &&
+    (role === "Contractor" || specs.length > 0) &&
+    (role !== "Contractor" || !trial || trialLength !== null) &&
+    (role !== "Supplier" || !paidTrial || paidTrialLength !== null)
 
   const submit = async () => {
     if (!user || !ready) return
@@ -88,6 +101,8 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
           role,
           specialtyIds: role === "Supplier" ? specs : undefined,
           salesOnly: role === "Supplier" ? salesOnly : undefined,
+          trialDays: trialLength ?? undefined,
+          paidTrialDays: paidTrialLength ?? undefined,
           leadId: lead.id,
           leadCollection: lead.source === "onboarding" ? "onboardingRequests" : "demoRequests",
         }),
@@ -155,6 +170,19 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
           <Input id="acc-phone" type="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
         </div>
 
+        {role === "Contractor" && (
+          <div className="space-y-3 rounded-lg border px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Label htmlFor="acc-trial" className="font-bold">{t("trial")}</Label>
+                <p className="text-xs text-muted-foreground">{t("trial_desc")}</p>
+              </div>
+              <Switch id="acc-trial" checked={trial} onCheckedChange={setTrial} disabled={busy} />
+            </div>
+            {trial && <TrialDaysInput id="acc-trial-days" label={t("trial_days")} value={trialDays} onChange={setTrialDays} disabled={busy} />}
+          </div>
+        )}
+
         {role === "Supplier" && (
           <div className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
             <div className="min-w-0">
@@ -162,6 +190,19 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
               <p className="text-xs text-muted-foreground">{t("sales_only_desc")}</p>
             </div>
             <Switch id="acc-sales-only" checked={salesOnly} onCheckedChange={setSalesOnly} disabled={busy} />
+          </div>
+        )}
+
+        {role === "Supplier" && (
+          <div className="space-y-3 rounded-lg border px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Label htmlFor="acc-paid-trial" className="font-bold">{t("paid_trial")}</Label>
+                <p className="text-xs text-muted-foreground">{t("paid_trial_desc")}</p>
+              </div>
+              <Switch id="acc-paid-trial" checked={paidTrial} onCheckedChange={setPaidTrial} disabled={busy} />
+            </div>
+            {paidTrial && <TrialDaysInput id="acc-paid-trial-days" label={t("trial_days")} value={paidTrialDays} onChange={setPaidTrialDays} disabled={busy} />}
           </div>
         )}
 

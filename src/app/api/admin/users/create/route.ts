@@ -6,6 +6,8 @@ import { sendEmail, buildAccountCreatedEmail } from "@/lib/email"
 import { COMPANY_MODULES, SALES_ONLY_OFF } from "@/lib/company-modules"
 import { offFor } from "@/lib/procurement/package"
 import { serverMaterialTree } from "@/lib/materials/tree-server"
+import { TRIAL_MAX_DAYS, trialWindow } from "@/lib/subscription-status"
+import { COMPANY_PLANS } from "@/lib/supplier-plan"
 
 // Admin-only account creation. This is the sole way a Contractor/Supplier
 // account can come into existence now that public self-registration has
@@ -27,6 +29,18 @@ const bodySchema = z
     salesOnly: z.boolean().optional(),
     /** A contractor starts with the base package (Procurement + Inventory) and the connectors named here (PRD ADM). */
     connectors: z.object({ pm: z.boolean().optional(), fin: z.boolean().optional(), mfg: z.boolean().optional() }).optional(),
+    /** A contractor opened as a trial: it runs this many days from the moment the account is created, then locks. */
+    trialDays: z.number().int().min(1).max(TRIAL_MAX_DAYS).optional(),
+    /** A supplier given the paid portal as a trial: this many days from now, then it is back on the free journey. */
+    paidTrialDays: z.number().int().min(1).max(TRIAL_MAX_DAYS).optional(),
+  })
+  .refine((data) => data.trialDays === undefined || data.role === "Contractor", {
+    message: "A trial is for contractor accounts",
+    path: ["trialDays"],
+  })
+  .refine((data) => data.paidTrialDays === undefined || data.role === "Supplier", {
+    message: "A paid trial is for supplier accounts",
+    path: ["paidTrialDays"],
   })
   .refine((data) => data.role !== "Supplier" || (data.specialtyIds && data.specialtyIds.length > 0), {
     message: "At least one specialization is required for supplier accounts",
@@ -89,6 +103,13 @@ export async function POST(req: NextRequest) {
       return errorResponse("Failed to create account", "INTERNAL_ERROR", 500)
     }
 
+    const rollback = async () => {
+      await db.collection("users").doc(uid).delete().catch(() => {})
+      await db.collection(COMPANY_MODULES).doc(uid).delete().catch(() => {})
+      await db.collection(COMPANY_PLANS).doc(uid).delete().catch(() => {})
+      await adminAuth.deleteUser(uid).catch(() => {})
+    }
+
     // --- Create the Firestore profile (atomic: roll back the Auth user if this fails) ---
     try {
       await db.collection("users").doc(uid).set({
@@ -126,15 +147,58 @@ export async function POST(req: NextRequest) {
         .catch((err) => console.error("Failed to switch the new supplier to sales-only:", err))
     }
 
-    // --- A contractor starts on the base package; the connectors the admin opened stay on (non-fatal: the admin can set them later) ---
+    // --- A contractor starts on the base package; the connectors the admin opened stay on. Without a trial this is non-fatal
+    //     (the admin can set the package later); WITH a trial the account is not left open-ended — it is undone and the admin asked to retry. ---
     if (role === "Contractor") {
       const c = parsed.data.connectors
       const off = offFor({ pm: Boolean(c?.pm), fin: Boolean(c?.fin), mfg: Boolean(c?.mfg) }, [])
-      await db
+      const written = await db
         .collection(COMPANY_MODULES)
         .doc(uid)
-        .set({ organizationId: uid, off, updatedById: decoded.uid, updatedByName: sender.name || sender.email || "", updatedAt: FieldValue.serverTimestamp() })
-        .catch((err) => console.error("Failed to set the new contractor's package:", err))
+        .set({
+          organizationId: uid,
+          off,
+          ...(parsed.data.trialDays !== undefined ? { subscription: "trial", ...trialWindow(parsed.data.trialDays, new Date()) } : {}),
+          updatedById: decoded.uid,
+          updatedByName: sender.name || sender.email || "",
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        .then(() => true)
+        .catch((err) => {
+          console.error("Failed to set the new contractor's package:", err)
+          return false
+        })
+      if (!written && parsed.data.trialDays !== undefined) {
+        await rollback()
+        return errorResponse("Failed to start the trial", "INTERNAL_ERROR", 500)
+      }
+    }
+
+    // --- A supplier given the paid portal for a few days: the plan document carries the end date. Undone if it cannot be written. ---
+    if (role === "Supplier" && parsed.data.paidTrialDays !== undefined) {
+      const trial = trialWindow(parsed.data.paidTrialDays, new Date())
+      const written = await db
+        .collection(COMPANY_PLANS)
+        .doc(uid)
+        .set({
+          organizationId: uid,
+          supplierPlan: "full",
+          planTrialDays: trial.trialDays,
+          planTrialStartedAt: trial.trialStartedAt,
+          planTrialEndsAt: trial.trialEndsAt,
+          updatedById: decoded.uid,
+          updatedByName: sender.name || sender.email || "",
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        .then(() => true)
+        .catch((err) => {
+          console.error("Failed to start the supplier's paid trial:", err)
+          return false
+        })
+      if (!written) {
+        await rollback()
+        return errorResponse("Failed to start the trial", "INTERNAL_ERROR", 500)
+      }
     }
 
     // --- Email the new user a password-set link ---

@@ -19,7 +19,8 @@ import { useToast } from "@/hooks/use-toast"
 import { COMPANY_MODULES, forcedOffBy, offSet, type OptionalModule } from "@/lib/company-modules"
 import { CONNECTORS, PRESETS, offFor, packageLabel, packageOf, samePackage, type Connector, type PackageFlags } from "@/lib/procurement/package"
 import { impactQuiet, readImpactReport, type ImpactReport } from "@/lib/procurement/package-impact-report"
-import { SUBSCRIPTION_STATUSES, subscriptionStatusOf, type SubscriptionStatus } from "@/lib/subscription-status"
+import { SUBSCRIPTION_STATUSES, TRIAL_DEFAULT_DAYS, parseTrialDays, subscriptionStateOf, subscriptionStatusOf, type SubscriptionStatus } from "@/lib/subscription-status"
+import { TrialDaysInput } from "@/components/admin/TrialDaysInput"
 import { displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { ConnectorCard } from "./ConnectorCard"
@@ -75,10 +76,13 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
   const storedOff = useMemo(() => [...offSet(stored as { off?: unknown } | null, "contractor")].sort(), [stored])
   const storedNeeds = useMemo(() => readNeeds((stored as { needs?: unknown } | null)?.needs), [stored])
   const storedSubscription = subscriptionStatusOf((stored as { subscription?: unknown } | null)?.subscription)
+  const storedTrial = subscriptionStateOf(stored as { subscription?: unknown; trialEndsAt?: unknown } | null, new Date())
+  const storedTrialDays = String((stored as { trialDays?: unknown } | null)?.trialDays ?? TRIAL_DEFAULT_DAYS)
 
   const [draftOff, setDraftOff] = useState<string[] | null>(null)
   const [draftNeeds, setDraftNeeds] = useState<NeedAnswers | null>(null)
   const [draftSubscription, setDraftSubscription] = useState<SubscriptionStatus | null>(null)
+  const [draftTrialDays, setDraftTrialDays] = useState<string | null>(null)
   const [report, setReport] = useState<ImpactReport | null>(null)
   const [loadingImpact, setLoadingImpact] = useState(false)
   const [failedImpact, setFailedImpact] = useState(false)
@@ -94,7 +98,10 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
   const needsChanged = JSON.stringify(needs) !== JSON.stringify(storedNeeds)
   const subscription = draftSubscription ?? storedSubscription
   const subscriptionChanged = subscription !== storedSubscription
-  const dirty = changed.length > 0 || needsChanged || subscriptionChanged || !sameList(off, storedOff)
+  const trialDays = draftTrialDays ?? storedTrialDays
+  const trialLength = subscription === "trial" ? parseTrialDays(trialDays) : null
+  const startsTrial = subscription === "trial" && (subscriptionChanged || draftTrialDays !== null)
+  const dirty = changed.length > 0 || needsChanged || subscriptionChanged || startsTrial || !sameList(off, storedOff)
   const offKey = off.join(",")
   const changedKey = changed.map((c) => `${c.conn}:${c.to}`).join("|")
 
@@ -139,12 +146,13 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
     setDraftOff(null)
     setDraftNeeds(null)
     setDraftSubscription(null)
+    setDraftTrialDays(null)
   }
 
   const hrOn = !off.includes("hr")
   const hrForcedBy = forcedOffBy("hr", new Set(off) as ReadonlySet<OptionalModule>, "contractor")
   const needsAck = report ? !impactQuiet(report) : false
-  const canSave = dirty && !busy && !loadingImpact && !failedImpact && (changed.length === 0 || report !== null) && (!needsAck || ack)
+  const canSave = dirty && !busy && !loadingImpact && !failedImpact && (changed.length === 0 || report !== null) && (!needsAck || ack) && (!startsTrial || trialLength !== null)
 
   const save = async () => {
     if (!user || !canSave) return
@@ -154,7 +162,7 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
       const res = await fetch("/api/admin/company-modules", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ orgId, off, needs, ack: needsAck ? ack : undefined, ...(subscriptionChanged ? { subscription } : {}) }),
+        body: JSON.stringify({ orgId, off, needs, ack: needsAck ? ack : undefined, ...(subscriptionChanged ? { subscription } : {}), ...(startsTrial && trialLength !== null ? { trialDays: trialLength } : {}) }),
       })
       const body = (await res.json().catch(() => null)) as { code?: string } | null
       if (!res.ok) {
@@ -197,7 +205,7 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
                 <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   {[o.city ? displayCity(o.city, locale) : "", since && t("since", { date: since })].filter(Boolean).join(" · ")}
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold">{o.isVerified ? tc("status_active") : o.verificationRequested ? tc("status_pending") : tc("status_review")}</span>
-                  <SubscriptionStatusPill status={storedSubscription} />
+                  <SubscriptionStatusPill status={storedTrial.phase} daysLeft={storedTrial.daysLeft} />
                   <PackageChips pkg={pkg} labels={labels} />
                 </p>
               </div>
@@ -279,6 +287,18 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
                       </Chip>
                     ))}
                   </div>
+                  {subscription === "trial" && (
+                    <div className="basis-full space-y-2 border-t pt-3">
+                      <TrialDaysInput id="pkg-trial-days" label={t("subscription.trial_days")} value={trialDays} onChange={setDraftTrialDays} disabled={busy} />
+                      <p className="text-xs text-muted-foreground">
+                        {storedTrial.endsAt && !startsTrial
+                          ? storedTrial.phase === "expired"
+                            ? t("subscription.ended_on", { date: sinceOf(storedTrial.endsAt, locale) })
+                            : `${t("subscription.ends_on", { date: sinceOf(storedTrial.endsAt, locale) })} · ${t("subscription.days_left", { count: storedTrial.daysLeft ?? 0 })}`
+                          : t("subscription.restart_hint")}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <small className="text-xs font-bold text-muted-foreground">{t("pkg.shortcuts")}</small>
