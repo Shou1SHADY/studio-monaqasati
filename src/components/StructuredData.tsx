@@ -1,15 +1,17 @@
+import { SITE_URL } from '@/lib/app-env'
+
 export default function StructuredData() {
   const graph = {
     '@context': 'https://schema.org',
     '@graph': [
       {
         '@type': 'SoftwareApplication',
-        '@id': 'https://mdmaktech.sa/#software',
+        '@id': `${SITE_URL}/#software`,
         name: 'مدماك تيك',
         alternateName: 'Mdmak Tech',
-        url: 'https://mdmaktech.sa',
-        image: 'https://mdmaktech.sa/og-image.jpg',
-        logo: 'https://mdmaktech.sa/android-chrome-512x512.png',
+        url: SITE_URL,
+        image: `${SITE_URL}/og-image.jpg`,
+        logo: `${SITE_URL}/android-chrome-512x512.png`,
         applicationCategory: 'BusinessApplication',
         description:
           'Mdmak Tech is a B2B digital procurement platform connecting contractors with verified suppliers through automated smart RFQ management, price comparison, and order management. Currently serving Saudi Arabia with global expansion planned.',
@@ -18,7 +20,7 @@ export default function StructuredData() {
         browserRequirements: 'Requires a modern web browser with JavaScript enabled',
         datePublished: '2026-01-01',
         author: {
-          '@id': 'https://mdmaktech.sa/#organization',
+          '@id': `${SITE_URL}/#organization`,
         },
         offers: [
           {
@@ -27,14 +29,14 @@ export default function StructuredData() {
             price: '0',
             priceCurrency: 'SAR',
             description: 'Free plan — up to 5 RFQs per month with basic features',
-            url: 'https://mdmaktech.sa/pricing',
+            url: `${SITE_URL}/pricing`,
             availability: 'https://schema.org/InStock',
           },
           {
             '@type': 'Offer',
             name: 'Professional Growth',
             description: 'Higher volume RFQs and advanced procurement features',
-            url: 'https://mdmaktech.sa/pricing',
+            url: `${SITE_URL}/pricing`,
             priceSpecification: {
               '@type': 'PriceSpecification',
               priceCurrency: 'SAR',
@@ -45,7 +47,7 @@ export default function StructuredData() {
             '@type': 'Offer',
             name: 'Enterprise',
             description: 'Custom pricing — ERP integration, dedicated account manager, advanced reporting',
-            url: 'https://mdmaktech.sa/pricing',
+            url: `${SITE_URL}/pricing`,
             priceSpecification: {
               '@type': 'PriceSpecification',
               priceCurrency: 'SAR',
@@ -68,12 +70,12 @@ export default function StructuredData() {
       },
       {
         '@type': 'Organization',
-        '@id': 'https://mdmaktech.sa/#organization',
+        '@id': `${SITE_URL}/#organization`,
         name: 'Mdmak Tech',
         alternateName: 'مدماك تيك',
-        url: 'https://mdmaktech.sa',
-        logo: 'https://mdmaktech.sa/android-chrome-512x512.png',
-        image: 'https://mdmaktech.sa/og-image.jpg',
+        url: SITE_URL,
+        logo: `${SITE_URL}/android-chrome-512x512.png`,
+        image: `${SITE_URL}/og-image.jpg`,
         description: 'B2B digital procurement platform for contractors and suppliers in Saudi Arabia.',
         foundingDate: '2026',
         foundingLocation: {
@@ -110,7 +112,7 @@ export default function StructuredData() {
           '@type': 'ContactPoint',
           contactType: 'customer service',
           email: 'info@mdmaktech.sa',
-          url: 'https://mdmaktech.sa/contact',
+          url: `${SITE_URL}/contact`,
           availableLanguage: ['Arabic', 'English'],
         },
         sameAs: [
@@ -121,43 +123,43 @@ export default function StructuredData() {
       },
       {
         '@type': 'WebSite',
-        '@id': 'https://mdmaktech.sa/#website',
+        '@id': `${SITE_URL}/#website`,
         name: 'مدماك تيك | Mdmak Tech',
         alternateName: 'Mdmak Tech',
-        url: 'https://mdmaktech.sa',
-        image: 'https://mdmaktech.sa/og-image.jpg',
+        url: SITE_URL,
+        image: `${SITE_URL}/og-image.jpg`,
         description: 'B2B digital procurement platform — smart RFQ management and supplier connectivity for Saudi Arabia.',
         inLanguage: ['ar', 'en'],
         publisher: {
-          '@id': 'https://mdmaktech.sa/#organization',
+          '@id': `${SITE_URL}/#organization`,
         },
       },
       {
         '@type': 'Service',
-        '@id': 'https://mdmaktech.sa/#service',
+        '@id': `${SITE_URL}/#service`,
         name: 'Smart Procurement & RFQ Platform',
         alternateName: 'منصة طلبات عروض الأسعار الذكية وإدارة عروض الأسعار',
         serviceType: 'B2B Procurement Platform',
         description:
           'Digital procurement service connecting Saudi construction contractors with verified material suppliers through automated RFQ management and intelligent price comparison.',
         provider: {
-          '@id': 'https://mdmaktech.sa/#organization',
+          '@id': `${SITE_URL}/#organization`,
         },
         areaServed: {
           '@type': 'Country',
           name: 'Saudi Arabia',
           sameAs: 'https://www.wikidata.org/wiki/Q851',
         },
-        url: 'https://mdmaktech.sa',
+        url: SITE_URL,
         inLanguage: ['ar', 'en'],
       },
       {
         // FAQPage — Google SERP rich result retired May 7 2026.
         // Value: AI/LLM citation signal, entity resolution, voice search.
         '@type': 'FAQPage',
-        '@id': 'https://mdmaktech.sa/#faq',
+        '@id': `${SITE_URL}/#faq`,
         name: 'Frequently Asked Questions — Mdmak Tech',
-        url: 'https://mdmaktech.sa',
+        url: SITE_URL,
         mainEntity: [
           {
             '@type': 'Question',

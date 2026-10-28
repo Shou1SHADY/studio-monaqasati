@@ -9,7 +9,7 @@
 - Brand name: Mdmak Tech
 - Arabic name: مدماك تيك
 - Legal name: Mdmak Tech Information Technology Company
-- Domain: https://mdmaktech.sa
+- Domain: https://mdmak.sa
 - Founded: 2026
 - Headquarters: Riyadh, Saudi Arabia
 - Contact: info@mdmaktech.sa
@@ -70,15 +70,15 @@ automatically, and award contracts — all in one place.
 - Servers hosted in NCA-compliant data centers
 
 ## Full Documentation
-- [Homepage](https://mdmaktech.sa)
-- [Platform Features](https://mdmaktech.sa/#features)
-- [Pricing Plans](https://mdmaktech.sa/pricing)
-- [About the Company](https://mdmaktech.sa/about)
-- [For Contractors](https://mdmaktech.sa/register?role=Contractor)
-- [For Suppliers](https://mdmaktech.sa/register?role=Supplier)
-- [Privacy Policy](https://mdmaktech.sa/privacy)
-- [Terms & Conditions](https://mdmaktech.sa/terms)
-- [Contact](https://mdmaktech.sa/contact)
+- [Homepage](https://mdmak.sa)
+- [Platform Features](https://mdmak.sa/#features)
+- [Pricing Plans](https://mdmak.sa/pricing)
+- [About the Company](https://mdmak.sa/about)
+- [For Contractors](https://mdmak.sa/register?role=Contractor)
+- [For Suppliers](https://mdmak.sa/register?role=Supplier)
+- [Privacy Policy](https://mdmak.sa/privacy)
+- [Terms & Conditions](https://mdmak.sa/terms)
+- [Contact](https://mdmak.sa/contact)
 
 ## Arabic Summary — ملخص عربي
 مدماك تيك منصة SaaS للمشتريات تربط المقاولين بالموردين في المملكة

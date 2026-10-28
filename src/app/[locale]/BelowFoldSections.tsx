@@ -408,7 +408,7 @@ export default function BelowFoldSections() {
                         className="text-[11px] font-semibold text-slate-500 px-4 py-1 rounded-full"
                         style={{ background: 'rgba(255,255,255,0.05)', letterSpacing: '.01em' }}
                       >
-                        app.mdmaktech.sa/suppliers
+                        mdmak.sa/suppliers
                       </span>
                     </div>
                   </div>

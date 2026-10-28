@@ -178,7 +178,7 @@ export function ComparisonSection() {
                 </div>
                 <div className="flex-1 flex items-center justify-center gap-2 h-[28px] mx-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-slate-400 text-xs font-medium">
                   <ShieldCheck size={12} className="text-green-400 shrink-0" />
-                  mdmaktech.sa
+                  mdmak.sa
                 </div>
                 <div className="flex items-center gap-[6px] text-[10px] text-green-400 font-bold tracking-[.05em] shrink-0">
                   <span className="block w-[6px] h-[6px] rounded-full bg-green-400 shadow-[0_0_8px_#4ade80] animate-pulse" />

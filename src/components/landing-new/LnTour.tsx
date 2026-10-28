@@ -17,9 +17,9 @@ export function LnTour() {
   const t = useTranslations('LandingNew.tour');
   const reduce = useReducedMotion();
   const screens: Screen[] = [
-    { id: 'contractor', icon: LayoutDashboard, tab: t('tab_1'), desc: t('desc_1'), src: '/images/contractor-desktop.png', alt: t('alt_1'), url: 'mdmaktech.sa/contractor' },
-    { id: 'compare', icon: BarChart3, tab: t('tab_2'), desc: t('desc_2'), src: '/images/platform-comparison.png', alt: t('alt_2'), url: 'mdmaktech.sa/contractor/rfqs' },
-    { id: 'supplier', icon: PackageSearch, tab: t('tab_3'), desc: t('desc_3'), src: '/images/supplier-desktop-clean.png', alt: t('alt_3'), url: 'mdmaktech.sa/supplier' },
+    { id: 'contractor', icon: LayoutDashboard, tab: t('tab_1'), desc: t('desc_1'), src: '/images/contractor-desktop.png', alt: t('alt_1'), url: 'mdmak.sa/contractor' },
+    { id: 'compare', icon: BarChart3, tab: t('tab_2'), desc: t('desc_2'), src: '/images/platform-comparison.png', alt: t('alt_2'), url: 'mdmak.sa/contractor/rfqs' },
+    { id: 'supplier', icon: PackageSearch, tab: t('tab_3'), desc: t('desc_3'), src: '/images/supplier-desktop-clean.png', alt: t('alt_3'), url: 'mdmak.sa/supplier' },
   ];
   const [active, setActive] = useState(screens[0].id);
   const cur = screens.find(s => s.id === active) ?? screens[0];

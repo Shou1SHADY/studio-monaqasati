@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     }
     const isExistingUser = targetUid !== null
 
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mdmaktech.sa").replace(/\/$/, "")
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mdmak.sa").replace(/\/$/, "")
 
     // ============================ TEAM INVITE ============================
     if (type === "team_invite") {

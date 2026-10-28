@@ -240,7 +240,7 @@ export function LinkComposer({
                             {tl("wa_preview_meta", { title: info?.rfq.title || "", date: closeText })}
                           </span>
                           <small className="text-muted-foreground" dir="ltr">
-                            mdmaktech.sa
+                            mdmak.sa
                           </small>
                         </div>
                       </div>

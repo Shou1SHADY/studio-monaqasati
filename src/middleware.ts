@@ -2,6 +2,8 @@ import createMiddleware from 'next-intl/middleware';
 import { NextResponse, type NextRequest } from 'next/server';
 import { routing } from './i18n/routing';
 import { allowedOrigin, corsHeaders } from './lib/cors';
+import { IS_UAT } from './lib/app-env';
+import { legacyHostRedirect } from './lib/legacy-host';
 
 const intl = createMiddleware(routing);
 
@@ -16,8 +18,17 @@ const intl = createMiddleware(routing);
 //    are allow-listed in src/lib/cors.ts — an unlisted origin gets no header
 //    and stays blocked, exactly as today.
 //
-//  - everything else — next-intl locale routing, unchanged.
+//  - everything else — next-intl locale routing, unchanged; a page asked for on an old domain (mdmaktech.sa) goes to the
+//    primary one (mdmak.sa) with a permanent redirect once REDIRECT_LEGACY_HOSTS=1 is set on the production deployment.
 export default function middleware(req: NextRequest) {
+  const moved = legacyHostRedirect({
+    enabled: !IS_UAT && process.env.REDIRECT_LEGACY_HOSTS === '1',
+    method: req.method,
+    host: req.headers.get('host'),
+    pathname: req.nextUrl.pathname,
+    search: req.nextUrl.search,
+  });
+  if (moved) return NextResponse.redirect(moved, 308);
   if (req.nextUrl.pathname.startsWith('/api/')) {
     const origin = allowedOrigin(req.headers.get('origin'));
     if (req.method === 'OPTIONS') {

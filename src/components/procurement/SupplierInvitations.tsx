@@ -52,7 +52,7 @@ export const invitationDay = (v: unknown): string | null => {
   return typeof ts.toDate === "function" ? todayOf(ts.toDate()) : null
 }
 
-export const portalOrigin = () => (typeof window !== "undefined" && window.location.origin) || "https://mdmaktech.sa"
+export const portalOrigin = () => (typeof window !== "undefined" && window.location.origin) || "https://mdmak.sa"
 
 const TONE: Record<InvitationState, PillTone> = { sent: "info", opened: "violet", joined: "ok", expired: "mute", cancelled: "mute", declined: "bad" }
 

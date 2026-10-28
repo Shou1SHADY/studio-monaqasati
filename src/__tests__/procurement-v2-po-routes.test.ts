@@ -223,7 +223,7 @@ describe("sending — only once approved; the portal for a registered supplier, 
     mockDb.seed("purchaseOrders/po2", approved({ isGuestSupplier: true, supplierOrgId: "guest", supplierUserId: null, docNumber: "PO-2026/002" }))
     const ctx = await poCtx(mockDb as never, mockCallers.mgr as never, { now: NOW, mintOrderLink: async () => poLinkUrl("abcdefghijklmnopqrstuv") })
     const linked = await sendOrder(ctx, { poId: "po2", channel: "whatsapp" })
-    expect(linked.link).toBe("https://mdmaktech.sa/po/abcdefghijklmnopqrstuv")
+    expect(linked.link).toBe("https://mdmak.sa/po/abcdefghijklmnopqrstuv")
   })
   it("«أُرسل خارج النظام» records the fact with no channel", async () => {
     mockDb.seed("purchaseOrders/po1", approved())

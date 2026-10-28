@@ -1,4 +1,4 @@
-export const DEFAULT_PUBLIC_BASE_URL = "https://mdmaktech.sa"
+export const DEFAULT_PUBLIC_BASE_URL = "https://mdmak.sa"
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"])
 

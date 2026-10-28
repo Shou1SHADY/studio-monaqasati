@@ -1,6 +1,6 @@
 import { alternatesForPath, buildPageMetadata } from '../lib/seo'
 
-const BASE_URL = 'https://mdmaktech.sa'
+const BASE_URL = 'https://mdmak.sa'
 
 describe('alternatesForPath()', () => {
   describe('root path "/"', () => {

@@ -78,7 +78,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       siteName: locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech',
       title: locale === 'ar' ? titleAr : titleEn,
       description: locale === 'ar' ? descAr : descEn,
-      url: locale === 'ar' ? 'https://mdmaktech.sa' : `https://mdmaktech.sa/${locale}`,
+      url: locale === 'ar' ? SITE_URL : `${SITE_URL}/${locale}`,
       images: [
         {
           url: '/og-image.jpg',

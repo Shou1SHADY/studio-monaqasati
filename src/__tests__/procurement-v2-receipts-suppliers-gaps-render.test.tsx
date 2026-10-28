@@ -98,7 +98,7 @@ describe("RC-07: «كما يراه المستلم» is the receiver's page, read
     render(<ReceiverPreviewDialog open onOpenChange={() => {}} delivery={notice({ name: "سامي", userId: null, phoneMasked: "05••12" })} po={po} placeName="المستودع المركزي" companyName="شركة البناء" noticeNumber="ASN-2026/021-1" />)
     await flush()
     const text = document.body.textContent ?? ""
-    expect(text).toContain("mdmaktech.sa/receive/")
+    expect(text).toContain("mdmak.sa/receive/")
     expect(text).toContain("شركة البناء")
     expect(text).toContain(msg("ReceiveLink.from_supplier").replace("{name}", "مصنع الجودة"))
     expect(text).toContain("فيلا الملقا · الرياض — الملقا")

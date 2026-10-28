@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { alternatesForPath } from '@/lib/seo';
+import { SITE_URL } from '@/lib/app-env';
 import HomeContent from './content';
 import { ScopedIntl } from '@/components/ScopedIntl';
 import { ROUTE_PORTAL_SCOPES } from '@/i18n/route-scopes';
@@ -42,7 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       siteName,
       title,
       description,
-      url: locale === 'ar' ? 'https://mdmaktech.sa' : `https://mdmaktech.sa/${locale}`,
+      url: locale === 'ar' ? SITE_URL : `${SITE_URL}/${locale}`,
       images: [
         {
           url: '/og-image.jpg',

@@ -172,7 +172,7 @@ describe("a legacy link (64-hex plaintext token) keeps resolving", () => {
 describe("the link origin follows the deployment (C-1)", () => {
   it("is production's domain when nothing is configured, and the configured origin otherwise", () => {
     expect(publicBaseUrl()).toBe(DEFAULT_PUBLIC_BASE_URL)
-    expect(DEFAULT_PUBLIC_BASE_URL).toBe("https://mdmaktech.sa")
+    expect(DEFAULT_PUBLIC_BASE_URL).toBe("https://mdmak.sa")
     process.env.NEXT_PUBLIC_APP_URL = "https://uat.mdmaktech.sa/"
     expect(publicBaseUrl()).toBe("https://uat.mdmaktech.sa")
     expect(linkUrl("rfq", "T")).toBe("https://uat.mdmaktech.sa/rfq/T")

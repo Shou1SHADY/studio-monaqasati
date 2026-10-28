@@ -131,7 +131,7 @@ describe("minting the RFQ's link (LNK-01, NFR-04)", () => {
     expect(String(uat.json.data?.url).startsWith("https://uat.mdmaktech.sa/rfq/")).toBe(true)
     delete process.env.NEXT_PUBLIC_APP_URL
     const prod = await createFor({ rfqId: "R1" })
-    expect(String(prod.json.data?.url).startsWith("https://mdmaktech.sa/rfq/")).toBe(true)
+    expect(String(prod.json.data?.url).startsWith("https://mdmak.sa/rfq/")).toBe(true)
   })
 
   it("reuses the RFQ's link (one link, one invitation list) and gives each ask its own token, all of which open the same page", async () => {

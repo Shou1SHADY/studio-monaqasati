@@ -37,7 +37,7 @@ import { buildSendMessage, isEmail, mailtoUrl, moneyTrail, whatsappUrl } from ".
 import { Money, useDateText } from "./PoBits"
 
 /** The site the buyer is using — UAT links stay on UAT. */
-const portalOrigin = () => (typeof window !== "undefined" && window.location.origin) || "https://mdmaktech.sa"
+const portalOrigin = () => (typeof window !== "undefined" && window.location.origin) || "https://mdmak.sa"
 
 export function PoSendDialog({
   open,

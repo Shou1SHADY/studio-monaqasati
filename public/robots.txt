@@ -16,4 +16,4 @@ Allow: /
 User-agent: Bingbot
 Allow: /
 
-Sitemap: https://mdmaktech.sa/sitemap.xml
+Sitemap: https://mdmak.sa/sitemap.xml

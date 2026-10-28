@@ -1,7 +1,7 @@
 "use client"
 
 // «كما يراه المستلم» (prototype `lk-view`, RC-07): what the receiver sees when this shipment reaches him — the SAME page, read-only. A frame
-// strip says how it reaches him (a link `mdmaktech.sa/receive/…`, or «مدماك · مهامي» inside his account); the page's own head (the Mdmak
+// strip says how it reaches him (a link `mdmak.sa/receive/…`, or «مدماك · مهامي» inside his account); the page's own head (the Mdmak
 // strip with the company, the order and notice numbers, «شحنة من …», where · when · the note); for a link receiver the code step first;
 // then the blind count (arrived · accepted, no ordered quantity), the three proof buttons (photo · weighbridge ticket · mill
 // certificate), the note and «أكّد الاستلام · التأكيد هو التوقيع · {where}». Nothing here can be typed into or sent; it is how the buyer
@@ -75,7 +75,7 @@ export function ReceiverPreviewDialog({
           <div className="flex items-center gap-1.5 border-b bg-muted/50 px-3 py-1.5 text-[11px] text-muted-foreground">
             <Lock size={11} aria-hidden="true" />
             {byLink ? (
-              <span dir="ltr">mdmaktech.sa/receive/…</span>
+              <span dir="ltr">mdmak.sa/receive/…</span>
             ) : (
               <span>{tp("tasks_frame")}</span>
             )}

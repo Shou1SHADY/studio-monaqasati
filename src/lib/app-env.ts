@@ -29,5 +29,8 @@ export const IS_UAT = APP_ENV === "uat"
  */
 export const REQUIRE_COMPLETE_PROFILE = !IS_UAT
 
+/** The platform's primary domain (mdmaktech.sa is the legacy one; see legacy-host.ts). */
+export const PRIMARY_ORIGIN = "https://mdmak.sa"
+
 /** Public origin of this deployment, without a trailing slash. */
-export const SITE_URL: string = (process.env.NEXT_PUBLIC_APP_URL || "https://mdmaktech.sa").replace(/\/$/, "")
+export const SITE_URL: string = (process.env.NEXT_PUBLIC_APP_URL || PRIMARY_ORIGIN).replace(/\/$/, "")
