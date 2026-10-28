@@ -1,5 +1,8 @@
-// Server-only — SMS via the Twilio REST API.
+// Server-only — SMS via Taqnyat (taqnyat.sa, a Saudi gateway) or the Twilio REST API.
 // Never import this file in client components.
+
+import { request as httpsRequest } from "node:https"
+import { HttpsProxyAgent } from "https-proxy-agent"
 
 type SendSmsInput = {
   to: string
@@ -37,15 +40,57 @@ function twilioCredentials(): boolean {
   return ACCOUNT_SID.test(accountSid) && !/^ACx+/i.test(accountSid) && authToken.length >= 32 && authToken !== "your_auth_token_here"
 }
 
-export function isSmsConfigured(): boolean {
-  return twilioCredentials() && smsSender() != null
+// Taqnyat: a bearer token from portal.taqnyat.sa (Developers → Applications,
+// SMS ticked) and a sender name approved on that account (case-sensitive).
+// Taqnyat refuses a send from an IP its Security settings have not marked
+// "allowed" (a CST rule), so the server's outgoing IP must be registered there.
+// Vercel's outgoing IP is not fixed, so production goes out through a fixed IP,
+// one of two ways:
+//   - TAQNYAT_PROXY_URL: a static-IP proxy service (Fixie: the FIXIE_URL it gives,
+//     http://user:pass@host:port). The call is tunnelled (CONNECT), so TLS runs from
+//     here to Taqnyat and the proxy never sees the token or the text. Whitelist the
+//     service's IPs in Taqnyat.
+//   - TAQNYAT_RELAY_URL (https only) + TAQNYAT_RELAY_KEY: a relay on our own fixed-IP
+//     host (`ops/taqnyat-relay/index.php`, Taqnyat's middleware made private). The
+//     token travels in the POST body; the relay passes Taqnyat's answer back unchanged.
+// The relay wins when both are set.
+const TAQNYAT_URL = "https://api.taqnyat.sa/v1/messages"
+
+// FIXIE_URL is the variable Fixie's Vercel integration writes on its own.
+function taqnyatProxy(): string | null {
+  const url = (process.env.TAQNYAT_PROXY_URL || process.env.FIXIE_URL || "").trim()
+  return /^https?:\/\/[^\s/]+/.test(url) ? url : null
 }
+
+function taqnyatRelay(): { url: string; key: string } | null {
+  const url = (process.env.TAQNYAT_RELAY_URL || "").trim()
+  const key = (process.env.TAQNYAT_RELAY_KEY || "").trim()
+  return url.startsWith("https://") && key.length >= 32 ? { url, key } : null
+}
+
+function taqnyatSender(): string | null {
+  const sender = (process.env.TAQNYAT_SENDER || "").trim()
+  return ALPHA_SENDER.test(sender) ? sender : null
+}
+
+export function isTaqnyatConfigured(): boolean {
+  // A relay URL without its key is a misconfiguration, not "send direct" — Vercel would be refused.
+  const relayHalfSet = Boolean((process.env.TAQNYAT_RELAY_URL || "").trim()) && taqnyatRelay() == null
+  return (process.env.TAQNYAT_BEARER_TOKEN || "").trim().length >= 20 && taqnyatSender() != null && !relayHalfSet
+}
+
+export function isSmsConfigured(): boolean {
+  return isTaqnyatConfigured() || (twilioCredentials() && smsSender() != null)
+}
+
+const twilioVerifyReady = () => twilioCredentials() && VERIFY_SERVICE_SID.test(process.env.TWILIO_VERIFY_SERVICE_SID || "")
 
 /** One-time codes through Twilio Verify: Twilio makes the code, delivers it
  * through its own registered senders (no Saudi sender-ID wait — Twilio's
- * guidance for OTP) and checks it. Needs no sender of ours. */
+ * guidance for OTP) and checks it. Needs no sender of ours. With Taqnyat set
+ * up, codes are ours and go out through Taqnyat's Saudi sender instead. */
 export function isVerifyConfigured(): boolean {
-  return twilioCredentials() && VERIFY_SERVICE_SID.test(process.env.TWILIO_VERIFY_SERVICE_SID || "")
+  return !isTaqnyatConfigured() && twilioVerifyReady()
 }
 
 /** Whether a one-time code can reach a phone by any route. */
@@ -99,7 +144,8 @@ export type RemoteCheck = "approved" | "wrong" | "expired" | "error"
 /** Twilio's verdict on a guess. A verification that is gone (expired,
  * approved already, too many guesses) answers 404 — "expired" here. */
 export async function checkVerification(verificationSid: string, code: string): Promise<RemoteCheck> {
-  if (!isVerifyConfigured()) return "error"
+  // Not isVerifyConfigured(): a code Verify sent just before Taqnyat was switched on is still answered.
+  if (!twilioVerifyReady()) return "error"
   const r = await twilioPost(verifyUrl("VerificationCheck"), { VerificationSid: verificationSid, Code: code })
   if (!r.ok) return r.status === 404 ? "expired" : "error"
   const status = String(r.data.status || "")
@@ -108,9 +154,83 @@ export async function checkVerification(verificationSid: string, code: string): 
   return "expired"
 }
 
+/** Taqnyat answers 201 with `accepted`/`rejected` recipient lists; a 400 carries
+ * the reason in `message` (balance, sender, IP not allowed…). The number goes
+ * without "+" or "00". Neither the number nor the text is logged. */
+type TaqnyatReply = { status: number; data: { statusCode?: number; message?: string; accepted?: unknown; rejected?: unknown } }
+
+const parseReply = (raw: string): TaqnyatReply["data"] => {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? (parsed as TaqnyatReply["data"]) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** fetch() cannot take a proxy agent, so the proxied call is a plain https request. */
+function postThroughProxy(proxy: string, headers: Record<string, string>, payload: string): Promise<TaqnyatReply> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      TAQNYAT_URL,
+      { method: "POST", headers: { ...headers, "Content-Length": String(Buffer.byteLength(payload)) }, agent: new HttpsProxyAgent(proxy), timeout: 20_000 },
+      (res) => {
+        let raw = ""
+        res.setEncoding("utf8")
+        res.on("data", (chunk: string) => (raw += chunk))
+        res.on("end", () => resolve({ status: res.statusCode || 0, data: parseReply(raw) }))
+        res.on("error", reject)
+      },
+    )
+    req.on("timeout", () => req.destroy(new Error("Taqnyat proxy timeout")))
+    req.on("error", reject)
+    req.end(payload)
+  })
+}
+
+async function taqnyatPost(token: string, message: Record<string, unknown>): Promise<TaqnyatReply> {
+  const relay = taqnyatRelay()
+  if (relay) {
+    const res = await fetch(relay.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Relay-Key": relay.key },
+      body: JSON.stringify({ bearerTokens: token, ...message }),
+      signal: AbortSignal.timeout(20_000),
+    })
+    return { status: res.status, data: parseReply(await res.text().catch(() => "")) }
+  }
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+  const proxy = taqnyatProxy()
+  if (proxy) return postThroughProxy(proxy, headers, JSON.stringify(message))
+  const res = await fetch(TAQNYAT_URL, { method: "POST", headers, body: JSON.stringify(message), signal: AbortSignal.timeout(20_000) })
+  return { status: res.status, data: parseReply(await res.text().catch(() => "")) }
+}
+
+async function taqnyatSend(to: string, body: string): Promise<{ sent: boolean; error?: string }> {
+  const token = (process.env.TAQNYAT_BEARER_TOKEN || "").trim()
+  const message = { recipients: [to.replace(/^\+/, "")], body, sender: taqnyatSender() }
+  try {
+    const { status, data } = await taqnyatPost(token, message)
+    if (status < 200 || status >= 300) {
+      console.error("Taqnyat API error:", status, data.statusCode, data.message)
+      return { sent: false, error: `TAQNYAT_${data.statusCode || status}` }
+    }
+    const rejected = Array.isArray(data.rejected) ? data.rejected.length : typeof data.rejected === "string" && data.rejected.replace(/[[\]\s]/g, "") ? 1 : 0
+    if (rejected > 0) {
+      console.error("Taqnyat rejected the recipient:", data.statusCode, data.message)
+      return { sent: false, error: "TAQNYAT_REJECTED" }
+    }
+    return { sent: true }
+  } catch (err) {
+    console.error("Failed to reach Taqnyat:", err)
+    return { sent: false, error: "SMS_NETWORK_ERROR" }
+  }
+}
+
 export async function sendSms({ to, body }: SendSmsInput): Promise<{ sent: boolean; error?: string }> {
+  if (isTaqnyatConfigured()) return taqnyatSend(to, body)
   if (!isSmsConfigured()) {
-    console.warn("Twilio credentials not configured — SMS skipped.")
+    console.warn("SMS gateway not configured — SMS skipped.")
     return { sent: false, error: "SMS_NOT_CONFIGURED" }
   }
   return twilioSend({ To: to, ...smsSender()!, Body: body })

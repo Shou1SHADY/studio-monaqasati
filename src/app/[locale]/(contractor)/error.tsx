@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { isTransientLoadError, mayAutoRetry } from '@/lib/transient-error';
+import { isTransientLoadError, mayAutoRetry, refreshFailedChunk, reloadAfterLoadError } from '@/lib/transient-error';
 
 const RETRY_KEY = 'mdmak:auto-retry-at';
 
@@ -27,11 +27,17 @@ export default function ContractorError({
     try { last = Number(sessionStorage.getItem(RETRY_KEY)) || null; } catch { /* storage blocked */ }
     if (!mayAutoRetry(last, Date.now())) { setRetrying(false); return; }
     try { sessionStorage.setItem(RETRY_KEY, String(Date.now())); } catch { /* storage blocked */ }
-    reset();
-    // If the retry fails in the same boundary, the message appears instead of a blank page.
-    const shown = window.setTimeout(() => setRetrying(false), 4000);
-    return () => window.clearTimeout(shown);
-  }, [transient, reset]);
+    // A broken chunk is fetched again first — otherwise the retry re-runs the cached copy.
+    let shown: number | undefined;
+    let live = true;
+    void refreshFailedChunk(error).finally(() => {
+      if (!live) return;
+      reset();
+      // If the retry fails in the same boundary, the message appears instead of a blank page.
+      shown = window.setTimeout(() => setRetrying(false), 4000);
+    });
+    return () => { live = false; window.clearTimeout(shown); };
+  }, [transient, reset, error]);
 
   if (retrying) return null;
 
@@ -54,7 +60,7 @@ export default function ContractorError({
             </p>
           )}
           <div className="flex gap-3 justify-center">
-            <Button onClick={transient ? () => window.location.reload() : reset} className="font-bold">
+            <Button onClick={transient ? () => reloadAfterLoadError(error) : reset} className="font-bold">
               {transient ? t('reload') : t('retry')}
             </Button>
             <Button variant="outline" onClick={() => window.history.back()}>

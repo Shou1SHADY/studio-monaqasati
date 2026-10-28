@@ -2,7 +2,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { useEffect, useState } from "react"
-import { isTransientLoadError, mayAutoRetry } from "@/lib/transient-error"
+import { isTransientLoadError, mayAutoRetry, reloadAfterLoadError } from "@/lib/transient-error"
 
 const RETRY_KEY = "mdmak:auto-retry-at"
 
@@ -29,7 +29,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
     try { last = Number(sessionStorage.getItem(RETRY_KEY)) || null } catch { /* storage blocked */ }
     if (!mayAutoRetry(last, Date.now())) { setShow(true); return }
     try { sessionStorage.setItem(RETRY_KEY, String(Date.now())) } catch { /* storage blocked */ }
-    window.location.reload()
+    reloadAfterLoadError(error)
   }, [error, transient])
 
   const tx = TEXT[lang]
@@ -40,7 +40,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
           <div style={{ maxWidth: 420, padding: 24, textAlign: "center" }}>
             <h1 style={{ fontSize: 22, lineHeight: 1.6, margin: "0 0 8px" }}>{tx.title}</h1>
             <p style={{ color: "#334155", lineHeight: 1.7, margin: "0 0 20px" }}>{tx.body}</p>
-            <button type="button" onClick={() => window.location.reload()} style={{ background: "#0369A1", color: "#fff", border: 0, borderRadius: 10, padding: "12px 24px", fontSize: 15, fontWeight: 700, cursor: "pointer", minHeight: 44 }}>
+            <button type="button" onClick={() => reloadAfterLoadError(error)} style={{ background: "#0369A1", color: "#fff", border: 0, borderRadius: 10, padding: "12px 24px", fontSize: 15, fontWeight: 700, cursor: "pointer", minHeight: 44 }}>
               {tx.reload}
             </button>
           </div>
