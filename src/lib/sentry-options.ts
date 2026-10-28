@@ -26,10 +26,20 @@ function scrubEvent<E extends Event>(event: E): E {
   if (event.request?.url) event.request.url = scrubTokens(event.request.url)
   if (event.transaction) event.transaction = scrubTokens(event.transaction)
   if (event.breadcrumbs) event.breadcrumbs = event.breadcrumbs.map(scrubBreadcrumb)
-  if (event.type === "transaction" && "spans" in event && event.spans) {
-    for (const span of event.spans) span.description = scrubTokens(span.description)
-  }
   return event
+}
+
+type StreamedSpan = Parameters<NonNullable<BrowserOptions["beforeSendSpan"]>>[0]
+
+// SDK 11 streams spans (`traceLifecycle: 'stream'`): `beforeSendTransaction` never runs,
+// so a page load's name ("/receive/<token>") and its url attributes are scrubbed here.
+// An attribute is a plain value or { value, unit }.
+export function scrubSpan(span: StreamedSpan): StreamedSpan {
+  const attributes: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(span.attributes ?? {})) {
+    attributes[k] = v && typeof v === "object" && "value" in v ? { ...v, value: scrubTokens(v.value) } : scrubTokens(v)
+  }
+  return { ...span, name: scrubTokens(span.name), attributes: attributes as StreamedSpan["attributes"] }
 }
 
 export function sentryOptions(): BrowserOptions {
@@ -43,7 +53,7 @@ export function sentryOptions(): BrowserOptions {
     dataCollection: { userInfo: false, cookies: false, httpHeaders: false, httpBodies: [], urlQueryParams: false },
     tracesSampleRate: 0.1,
     beforeSend: (event) => scrubEvent(event),
-    beforeSendTransaction: (event) => scrubEvent(event),
+    beforeSendSpan: scrubSpan,
     beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb),
   }
 }

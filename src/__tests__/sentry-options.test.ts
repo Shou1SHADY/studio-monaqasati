@@ -29,3 +29,17 @@ describe("Sentry never sees a guest link's token", () => {
     expect(o.enabled).toBe(false)
   })
 })
+
+describe("Sentry 11 streams spans", () => {
+  it("scrubs a span's name and url attributes — beforeSendTransaction no longer runs", () => {
+    const o = sentryOptions()
+    expect(o.beforeSendTransaction).toBeUndefined()
+    const span = o.beforeSendSpan!({
+      trace_id: "t", span_id: "s", name: "GET /en/receive/secret", start_timestamp: 1, status: "ok", is_segment: true,
+      attributes: { "url.full": "https://x/api/receipt-links/secret/sign", "http.route": { value: "/offer/secret" }, "http.status_code": 200 },
+    })
+    expect(JSON.stringify(span)).not.toContain("secret")
+    expect(span.attributes["http.status_code"]).toBe(200)
+    expect(span.name).toBe("GET /en/receive/[token]")
+  })
+})
